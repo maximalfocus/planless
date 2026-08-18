@@ -98,6 +98,8 @@ var checks = map[string]func() []step{
 	"internet-drifted-export":    internetDriftedExport,
 	"corp-legitimate-paths":      corpLegitimatePaths,
 	"vulnerable-ledger":          vulnerableLedger,
+	"encryption-enabled":         encryptionEnabled,
+	"deployer-scope-is-minimal":  deployerScopeIsMinimal,
 }
 
 func main() {
@@ -490,6 +492,112 @@ func vulnerableLedger() []step {
 			changes[0].Segment == fixtures.SegmentInternet &&
 			changes[0].Detail == "fare-cap=400",
 	}}
+}
+
+// encryptionEnabled is a negative control: encryption at rest is on for every
+// store, in every variant, and it does not help. The platform decrypts for
+// whoever it authorizes, and the misconfiguration authorizes everyone.
+func encryptionEnabled() []step {
+	st, failure := readPlatformState()
+	if failure != nil {
+		return []step{*failure}
+	}
+	encrypted, total := 0, len(st.Buckets)
+	names := []string{}
+	for _, b := range st.Buckets {
+		if b.Encrypted {
+			encrypted++
+			continue
+		}
+		names = append(names, b.Name)
+	}
+	return []step{{
+		Name:     "every store is encrypted at rest, in every variant",
+		Expected: "all stores encrypted",
+		Observed: fmt.Sprintf("%d of %d encrypted%s", encrypted, total, joinIfAny(names)),
+		Passed:   total > 0 && encrypted == total,
+	}}
+}
+
+// deployerScopeIsMinimal is a negative control: the deployment principal holds
+// exactly the permissions it needs and no more, identically in every variant.
+// It was authorized to create precisely what it created.
+func deployerScopeIsMinimal() []step {
+	st, failure := readPlatformState()
+	if failure != nil {
+		return []step{*failure}
+	}
+	scope := []string{}
+	for _, g := range st.Grants {
+		for _, p := range g.Principals {
+			if p != fixtures.PrincipalDeployer {
+				continue
+			}
+			if len(g.Principals) != 1 {
+				scope = append(scope, g.ID+" (shared with others)")
+				continue
+			}
+			for _, a := range g.Actions {
+				if a != platform.ActionWrite {
+					scope = append(scope, g.ID+" ("+a+")")
+				}
+			}
+			if len(g.SourceRanges) != 1 || g.SourceRanges[0] != fixtures.CorpCIDR {
+				scope = append(scope, g.ID+" (reachable from "+strings.Join(g.SourceRanges, ",")+")")
+				continue
+			}
+			scope = append(scope, g.ResourceKind+"/"+g.ResourceName)
+		}
+	}
+	sort.Strings(scope)
+	want := []string{
+		platform.KindBucket + "/" + fixtures.BucketFareExports,
+		platform.KindBucket + "/" + fixtures.BucketStatusAssets,
+		platform.KindBucket + "/" + fixtures.BucketStatusPage,
+		platform.KindWorkload + "/" + fixtures.WorkloadFareEngine,
+	}
+	return []step{{
+		Name:     "the deployment principal writes exactly the fixture resources, from the corporate segment only",
+		Expected: strings.Join(want, ", "),
+		Observed: strings.Join(scope, ", "),
+		Passed:   equalStrings(scope, want),
+	}}
+}
+
+func joinIfAny(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	return "; unencrypted: " + strings.Join(names, ", ")
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// readPlatformState reads live state through the control plane's read-only API.
+func readPlatformState() (*platform.State, *step) {
+	status, body, err := do(corpRole, http.MethodGet, pathState, nil)
+	if err != nil || status != http.StatusOK {
+		return nil, &step{
+			Name:     "read platform state",
+			Expected: "200",
+			Observed: fmt.Sprintf("status=%d err=%v", status, err),
+		}
+	}
+	var st platform.State
+	if err := json.Unmarshal(body, &st); err != nil {
+		return nil, &step{Name: "parse platform state", Expected: "parsable", Observed: err.Error()}
+	}
+	return &st, nil
 }
 
 func renderLedger(rows []platform.LedgerEntry) string {

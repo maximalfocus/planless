@@ -58,6 +58,12 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println(`{"document":"planless.comparison","identical":true}`)
+	case len(os.Args) == 2 && os.Args[1] == "compare-application":
+		if err := tofu.CompareApplication(os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, "pipeline:", err)
+			os.Exit(1)
+		}
+		fmt.Println(`{"document":"planless.comparison","identical_application_behaviour":true}`)
 	case len(os.Args) == 2 && os.Args[1] == "compare-reachability":
 		if err := tofu.CompareReachability(os.Stdin); err != nil {
 			fmt.Fprintln(os.Stderr, "pipeline:", err)
@@ -75,7 +81,8 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr,
 			"usage: pipeline <scenario>|reconcile|drift|remove-undeclared|"+
-				"compare-observations|compare-reachability|compare-builds|compare-exposure\n"+
+				"compare-observations|compare-reachability|compare-application|"+
+				"compare-builds|compare-exposure\n"+
 				"available scenarios: %s\n", available())
 		os.Exit(64)
 	}

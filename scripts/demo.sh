@@ -153,6 +153,7 @@ REFUSED
 	step "the intended posture, applied through the gate"
 	scenario secure-apply >/dev/null
 	$COMPOSE exec -T outside /usr/local/bin/client internet-secure-baseline
+	$COMPOSE exec -T finance /usr/local/bin/client observe >"$SECURE_OBSERVATION"
 
 	step "the misconfigured value set, with the gate standing on the path"
 	vulnerable_scenario vulnerable-gated >/dev/null
@@ -163,10 +164,20 @@ REFUSED
 
 	step "what the public segment can now reach"
 	$COMPOSE exec -T outside /usr/local/bin/client observe >"$IAC_OBSERVATION"
+	# Captured before the one enumerated admin transition, so the comparison is
+	# of the same request against the same application rather than of a fictional
+	# fare cap somebody moved.
+	$COMPOSE exec -T finance /usr/local/bin/client observe >"$VULNERABLE_OBSERVATION"
 	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-impact
 
 	step "the platform recorded the anonymous transition"
 	$COMPOSE exec -T verifier /usr/local/bin/client vulnerable-ledger
+
+	step "what this flaw is not: six controls, present, correct and irrelevant"
+	$COMPOSE exec -T verifier /usr/local/bin/client encryption-enabled
+	$COMPOSE exec -T verifier /usr/local/bin/client deployer-scope-is-minimal
+	cat "$SECURE_OBSERVATION" "$VULNERABLE_OBSERVATION" |
+		$COMPOSE exec -T pipeline /usr/local/bin/pipeline compare-application
 
 	step "every legitimate corporate path is unaffected"
 	$COMPOSE exec -T finance /usr/local/bin/client corp-legitimate-paths
@@ -321,6 +332,10 @@ checks() {
 	step "the applied platform state equals the checked-in fixture, byte for byte"
 	$COMPOSE exec -T verifier /usr/local/bin/client state-matches-fixture
 
+	step "what this flaw is not: encryption on, deployer minimal"
+	$COMPOSE exec -T verifier /usr/local/bin/client encryption-enabled
+	$COMPOSE exec -T verifier /usr/local/bin/client deployer-scope-is-minimal
+
 	step "the drift check finds nothing against a compliant platform"
 	$COMPOSE exec -T pipeline /usr/local/bin/pipeline drift >/dev/null
 
@@ -340,6 +355,8 @@ SECURE_TRANSCRIPT="${TMPDIR:-/tmp}/planless-secure-transcript.json"
 DENYLIST_TRANSCRIPT="${TMPDIR:-/tmp}/planless-denylist-transcript.json"
 IAC_OBSERVATION="${TMPDIR:-/tmp}/planless-iac-observation.json"
 MANIFEST_OBSERVATION="${TMPDIR:-/tmp}/planless-manifest-observation.json"
+SECURE_OBSERVATION="${TMPDIR:-/tmp}/planless-secure-observation.json"
+VULNERABLE_OBSERVATION="${TMPDIR:-/tmp}/planless-vulnerable-observation.json"
 
 case "${1:-}" in
 verify)

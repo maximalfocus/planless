@@ -399,6 +399,43 @@ Every claim about platform state is made through the control plane's read-only A
 observed result, and compared by canonical digest. Nothing inspects a container's filesystem, database
 or memory.
 
+## What this is, in the taxonomy
+
+The class is **Infrastructure-as-Code misconfiguration**, and the claim is deliberately narrow. It is
+checked in as data, and a test fails if it drifts.
+
+| Identifier | | Why |
+|---|---|---|
+| **A05:2021** Security Misconfiguration | claimed | on the category's own description, which names improperly configured permissions on cloud services and directs reviewers to review cloud storage permissions |
+| **CWE-732** Incorrect Permission Assignment for Critical Resource | claimed | the storage shape. Its `ALLOWED-WITH-REVIEW` note warns it is often misused where an authorization *check* is missing — nothing here fails to check anything; the permission was assigned, deliberately and successfully, to everyone |
+| **CWE-1327** Binding to an Unrestricted IP Address | claimed | the network shape, twice: an ingress rule whose permitted source set is every address, and a workload that binds the unrestricted address |
+| **CWE-1032** OWASP Top Ten 2017 Category A6 | **not** claimed | a CWE *Category* whose mapping usage is **Prohibited** — such an identifier must not be used to map to real-world vulnerabilities |
+| **CWE-16** Configuration | **not** claimed | also a Category with mapping usage Prohibited |
+| **CWE-668** Exposure of Resource to Wrong Sphere | **not** claimed | named as the shared root of both shapes, and refused: its mapping usage is Discouraged as a catch-all |
+| **CWE-276** Incorrect Default Permissions | **not** claimed | defined over installed file permissions, not provisioned platform resources |
+| **A06:2021** Vulnerable and Outdated Components | **not** claimed | nothing here is vulnerable, outdated or unmaintained, and no version, patch level or CVE is a variable in any test |
+| **API8:2023** Security Misconfiguration | **not** claimed | the affected surface is a platform's resource configuration, not an API's security configuration |
+
+The uncomfortable part, stated rather than hidden: **no CWE in A05:2021's published mapping is the
+precise weakness here.** That list is dominated by XXE, cookie, .NET, error-page and cross-domain
+entries, and its only two general-purpose members — `CWE-16` and `CWE-1032` — are both
+mapping-prohibited Categories. That is a gap in the mapping, reported honestly, not a defect in the
+demonstration.
+
+## What this flaw is not
+
+Six things a reader might reasonably expect to be the explanation. Each is present, correct, and
+irrelevant — and each is automated, so it fails if it stops being true.
+
+| Control | Evidence |
+|---|---|
+| no vulnerable, outdated or unmaintained component | no component version, patch level or CVE is a variable anywhere |
+| no code execution, no hostile input | nothing in the configuration or the manifests executes; the applier calls a fixed set of typed operations |
+| the application is identical and correct | the same build serves both variants, compared by the digest it reports of its own executable |
+| correctness tooling is green | `validate`, plan, apply and the smoke checks all pass in the misconfigured variant |
+| encryption at rest is enabled and irrelevant | every store is encrypted in both variants, and the anonymous client reads the export anyway |
+| the deployer is least-privileged and it does not help | its permissions are identical and minimal in both variants |
+
 ## Containment
 
 - Both segments are internal: there is no route out of either, and no container has a default route.

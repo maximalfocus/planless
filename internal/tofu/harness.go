@@ -118,6 +118,11 @@ func Run(cfg Config, scenario Scenario) (*Transcript, error) {
 		if err := t.run(cfg, "init", "-input=false", "-no-color"); err != nil {
 			return t, err
 		}
+		// The configuration is correct by every non-security measure, and this
+		// is where that stops being a claim.
+		if err := t.run(cfg, "validate", "-no-color"); err != nil {
+			return t, err
+		}
 		if err := t.run(cfg, "plan", "-input=false", "-no-color", "-lock=false",
 			"-var-file="+scenario.VarFile, "-out=plan.tfplan"); err != nil {
 			return t, err
@@ -445,6 +450,18 @@ func (t *Transcript) assert(scenario Scenario) bool {
 		return true
 	}
 	return false
+}
+
+// toolchainWasGreen reports whether validate, plan and apply all succeeded.
+func (t *Transcript) toolchainWasGreen() bool {
+	green := map[string]bool{}
+	for _, stage := range t.Stages {
+		if stage.ExitCode != 0 {
+			return false
+		}
+		green[stage.Name] = true
+	}
+	return green["validate"] && green["plan"] && green["apply"]
 }
 
 // refuse records the one audit event a refusal produces and sets the generic
