@@ -160,9 +160,17 @@ REFUSED
 	step "every legitimate corporate path is unaffected"
 	$COMPOSE run --rm -T finance corp-legitimate-paths
 
-	step "the fix: applying the secure value set closes it again"
-	scenario secure-apply >"$SECURE_TRANSCRIPT"
-	$COMPOSE run --rm -T outside internet-secure-baseline
+	restore
+
+	step "a control that runs honestly and reads the wrong artifact"
+	vulnerable_scenario half-fix-source-scan >/dev/null
+	$COMPOSE run --rm -T outside internet-vulnerable-reach
+	restore
+
+	step "a control that reads the right artifact and is not obeyed"
+	vulnerable_scenario half-fix-report-only >/dev/null
+	$COMPOSE run --rm -T outside internet-vulnerable-reach
+	restore
 
 	step "the application build is identical in both variants"
 	cat "$VULNERABLE_TRANSCRIPT" "$SECURE_TRANSCRIPT" |
@@ -170,6 +178,14 @@ REFUSED
 
 	down
 	printf '\n=== planless: the vulnerable demonstration completed\n'
+}
+
+# restore applies the secure value set again and requires the public segment to
+# be closed once more. The fix is shown after every shape, not only described.
+restore() {
+	step "the fix: applying the secure value set closes it again"
+	scenario secure-apply >"$SECURE_TRANSCRIPT"
+	$COMPOSE run --rm -T outside internet-secure-baseline
 }
 
 # vulnerable_scenario runs one misconfigured scenario on the vulnerable surface

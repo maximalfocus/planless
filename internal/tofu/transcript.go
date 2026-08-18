@@ -42,6 +42,9 @@ type Enforcement struct {
 	Applied        bool   `json:"applied"`
 	OperatorResult string `json:"operator_result"`
 	RefusedAtStage string `json:"refused_at_stage,omitempty"`
+
+	// Advisory records that the pipeline had a decision and did not obey it.
+	Advisory bool `json:"advisory,omitempty"`
 }
 
 // AuditEvent is the structured record of one refusal. It carries a stable
@@ -119,7 +122,17 @@ type Transcript struct {
 	Stages    []Stage   `json:"stages"`
 	Artifacts Artifacts `json:"artifacts"`
 
-	SourceLayout []Finding       `json:"source_layout_findings"`
+	SourceLayout []Finding `json:"source_layout_findings"`
+
+	// Scan is the report of a scan over the source configuration files, when
+	// that is the control this pipeline ran.
+	Scan *gate.ScanReport `json:"source_scan,omitempty"`
+
+	// WouldHaveDecided is what a policy reading the resolved desired state
+	// would have said. It is recorded when nothing in the pipeline read that
+	// artifact, so the transcript can show the gap rather than assert it.
+	WouldHaveDecided *gate.Decision `json:"policy_would_have_decided,omitempty"`
+
 	Decision     *gate.Decision  `json:"policy_decision,omitempty"`
 	Enforcement  Enforcement     `json:"enforcement"`
 	Audit        []AuditEvent    `json:"audit"`
@@ -161,6 +174,23 @@ func (t *Transcript) Render() string {
 	line("evaluated by", or(t.Artifacts.EvaluatedBy))
 	line("applied state", or(t.Artifacts.AppliedState))
 
+	if t.Scan != nil {
+		fmt.Fprintln(&b, "\nsource configuration scan")
+		line("files read", fmt.Sprintf("%d", len(t.Scan.ScannedFiles)))
+		line("findings", fmt.Sprintf("%d", t.Scan.FindingCount))
+		for _, f := range t.Scan.Findings {
+			line(f.Rule, f.File+": "+f.Reason)
+		}
+		line("correct about", t.Scan.CorrectAbout)
+		line("did not read", t.Scan.DidNotRead)
+	}
+	if t.WouldHaveDecided != nil {
+		fmt.Fprintf(&b, "\na policy reading the resolved desired state would have decided %s\n",
+			t.WouldHaveDecided.Result)
+		for _, v := range t.WouldHaveDecided.Violations {
+			line(v.Class, v.Resource+": "+v.Exposure)
+		}
+	}
 	if t.Decision != nil {
 		fmt.Fprintln(&b, "\ncomputed effective exposure")
 		for _, e := range t.Decision.Exposures {
@@ -179,6 +209,9 @@ func (t *Transcript) Render() string {
 	fmt.Fprintln(&b, "\nenforcement")
 	line("applied", fmt.Sprintf("%t", t.Enforcement.Applied))
 	line("operator result", t.Enforcement.OperatorResult)
+	if t.Enforcement.Advisory {
+		line("advisory", "the pipeline had a decision and did not obey it")
+	}
 	if t.Enforcement.RefusedAtStage != "" {
 		line("refused at stage", t.Enforcement.RefusedAtStage)
 	}
@@ -204,8 +237,12 @@ func (t *Transcript) Render() string {
 		}
 		fmt.Fprintf(&b, "\nreconciliation %s%s — %s\n", t.Reconcile.Verdict, note, t.Reconcile.Reason)
 	}
-	if t.Decision == nil {
+	switch {
+	case t.Decision == nil && t.Scan == nil:
 		fmt.Fprintln(&b, "\nno artifact was evaluated: this pipeline has no policy step")
+	case t.Decision == nil && t.Scan != nil:
+		fmt.Fprintln(&b, "\nthe artifact that was applied was evaluated by nothing:")
+		fmt.Fprintln(&b, "  the scan read the configuration files; the apply consumed the resolved plan")
 	}
 	if len(t.Provenance) > 0 {
 		fmt.Fprintln(&b, "\nwhere the exposure values came from")

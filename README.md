@@ -8,10 +8,10 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** the demonstration works end to end. The secure pipeline is the default; the two exposure
-> shapes and the ungated path are behind two separate opt-in actions. Still to come: the five
-> gate-failure shapes and drift, the Kubernetes-shaped surface, the negative-control matrix, and the
-> walkthrough.
+> **Status:** the demonstration works end to end, and three of the five gate-failure shapes are in.
+> The secure pipeline is the default; everything misconfigured is behind two separate opt-in actions.
+> Still to come: a gate off the only path and drift, the denylist and its two bypasses, the
+> Kubernetes-shaped surface, the negative-control matrix, and the walkthrough.
 
 ## What this slice establishes
 
@@ -180,6 +180,39 @@ where the exposure values came from
   network_rule/rule-fare-engine-admin.source_ranges   module-default (var.admin_profiles)
   workload/fare-engine.ports.admin.bind               module-default (var.admin_profiles)
 ```
+
+### Three controls that sound sufficient
+
+Each is honestly implemented, genuinely runs, and is defeated. Each is a separate scenario with its own
+evidence line, and each ends in the same reachability from the public segment.
+
+| Shape | What it does | Why it fails |
+|---|---|---|
+| **no gate at all** | plans and applies with no policy step | baseline: the configuration is applied exactly as written |
+| **scan the source text** | reads the `.tf` resource definitions, completes, reports **zero findings** | the values are not in the resource definitions. They arrive from a variable file and a module default, so they exist only in the resolved plan — which the scan never opened |
+| **report, do not enforce** | reads the *resolved* plan, produces **both** findings correctly, exits zero | a finding without authority is a log line; the apply proceeds unchanged |
+
+The second is worth dwelling on, because the scan is not a straw man. Its policy is tested against a
+configuration that *does* spell the exposure in a resource block, and it finds it. Against this
+project's configuration it finds nothing, and it is right. The transcript renders the artifact it read
+and the artifact that was applied as separate digested fields, says what it did not read, and then
+shows what a policy reading the resolved artifact would have decided:
+
+```
+source configuration scan
+  files read      4
+  findings        0
+  correct about   the artifact it read: the resource definitions in the configuration
+  did not read    the resolved desired state, which is the artifact that gets applied
+
+a policy reading the resolved desired state would have decided deny
+  exposure_not_allowlisted  bucket/fare-exports:        principals=["*"] sources=["0.0.0.0/0"]
+  exposure_not_allowlisted  workload/fare-engine:admin: sources=["0.0.0.0/0"]
+```
+
+The advisory setting exists only on the misconfigured scenarios. There is no option, environment
+variable or severity threshold that turns the enforcing gate into a reporting one, and a test fails if
+one ever appears.
 
 ### Two opt-ins, and neither alone is enough
 
