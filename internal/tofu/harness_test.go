@@ -353,8 +353,9 @@ func TestVulnerableRunsAreLabelled(t *testing.T) {
 		if !s.Vulnerable {
 			continue
 		}
-		if s.VarFile != "vulnerable.tfvars" && !s.DriftMutation {
-			t.Fatalf("scenario %s is marked vulnerable but neither reads the misconfigured value set "+
+		misconfigured := s.VarFile == "vulnerable.tfvars" || s.VarFile == "denylist.tfvars"
+		if !misconfigured && !s.DriftMutation {
+			t.Fatalf("scenario %s is marked vulnerable but neither reads a misconfigured value set "+
 				"nor changes the platform directly", name)
 		}
 	}
@@ -554,5 +555,55 @@ func TestDriftShapeRequiresACompliantApplyAndAnUnrepairedDivergence(t *testing.T
 	tr.Decision.Result = gate.ResultDeny
 	if tr.assert(scenario) {
 		t.Fatal("a drift shape whose apply was not compliant demonstrates nothing")
+	}
+}
+
+// A denylist that matched nothing proves nothing unless the artifact it read
+// would have been refused by a policy that computes reachability over it.
+func TestDenylistShapeRequiresAPolicyThatWouldHaveRefused(t *testing.T) {
+	scenario := Scenarios["half-fix-denylist"]
+	if scenario.VarFile != "denylist.tfvars" {
+		t.Fatalf("the denylist shape must run the bypassed value set, got %s", scenario.VarFile)
+	}
+	tr := &Transcript{Scenario: scenario.ID, Expected: ExpectApplied}
+	tr.Enforcement.OperatorResult = ResultDeployed
+	if tr.assert(scenario) {
+		t.Fatal("a denylist scenario with no denylist report must not pass")
+	}
+	tr.Denylist = &gate.DenylistReport{Rules: []string{"deny-public-bucket"}, FindingCount: 0}
+	if tr.assert(scenario) {
+		t.Fatal("a denylist scenario must show what a computing policy would have said")
+	}
+	tr.WouldHaveDecided = &gate.Decision{Result: gate.ResultDeny}
+	if !tr.assert(scenario) {
+		t.Fatal("rules that matched nothing beside an artifact that would be refused should pass")
+	}
+	tr.Denylist.FindingCount = 1
+	if tr.assert(scenario) {
+		t.Fatal("a denylist that matched something is not this shape")
+	}
+	tr.Denylist.FindingCount = 0
+	tr.Denylist.Rules = nil
+	if tr.assert(scenario) {
+		t.Fatal("a denylist with no rules at all is not a denylist")
+	}
+}
+
+// The bypasses are a fixed, enumerated teaching pair. Nothing here discovers
+// more of them, and the set of permissions the demonstration can leave behind is
+// closed and named.
+func TestTheDemonstrationLeavesOnlyEnumeratedResourcesBehind(t *testing.T) {
+	if len(UndeclaredGrants) != 2 {
+		t.Fatalf("expected exactly two enumerated grants, got %v", UndeclaredGrants)
+	}
+	seen := map[string]bool{}
+	for _, id := range UndeclaredGrants {
+		if id == "" || seen[id] {
+			t.Fatalf("malformed enumerated grant list: %v", UndeclaredGrants)
+		}
+		seen[id] = true
+	}
+	if !seen[DriftGrantID] {
+		t.Fatal("the grant a drift scenario adds is not in the enumerated list")
 	}
 }

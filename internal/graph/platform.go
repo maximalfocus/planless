@@ -78,6 +78,7 @@ func FromPlatformState(st State, segments []Segment) (*Graph, error) {
 	for _, b := range st.Buckets {
 		g.Resources = append(g.Resources, Resource{
 			Kind: "bucket", Name: b.Name, Address: "platform/bucket/" + b.Name,
+			Attributes: map[string]any{"name": b.Name},
 		})
 	}
 	for _, o := range st.Objects {

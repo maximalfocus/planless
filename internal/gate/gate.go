@@ -41,6 +41,10 @@ const (
 	// is a separate policy over a separate artifact, which is the whole reason
 	// this demonstration exists.
 	ScanQuery = "data.planless.source_scan.report"
+
+	// DenylistQuery is the report a denylist of known-bad literals produces
+	// over the resolved desired state: the right artifact, the wrong question.
+	DenylistQuery = "data.planless.denylist.report"
 )
 
 // Config locates the engine, the policy body, and the reviewed allowlist.
@@ -79,8 +83,14 @@ type Violation struct {
 
 // Exposure is the reachability the policy computed for one resource.
 type Exposure struct {
-	Resource   string `json:"resource"`
-	Computed   string `json:"computed"`
+	Resource string `json:"resource"`
+	Computed string `json:"computed"`
+
+	// Reachability is the exposure without the rules that produced it: who can
+	// reach this, from where. Two spellings of one desired state differ in
+	// their rules and agree here.
+	Reachability string `json:"reachability"`
+
 	AdmittedBy string `json:"admitted_by"`
 }
 
@@ -126,6 +136,50 @@ func Scan(cfg Config, bundle []byte) (ScanReport, error) {
 	}
 	if report.Findings == nil {
 		report.Findings = []ScanFinding{}
+	}
+	return report, nil
+}
+
+// DenylistFinding is one literal a denylist rule matched.
+type DenylistFinding struct {
+	Rule     string `json:"rule"`
+	Resource string `json:"resource"`
+	Matched  string `json:"matched"`
+	Reason   string `json:"reason"`
+}
+
+// DenylistReport is a denylist's account of itself: which rules it has, what
+// they matched, and what kind of answer that is.
+type DenylistReport struct {
+	Rules        []string          `json:"rules"`
+	Findings     []DenylistFinding `json:"findings"`
+	FindingCount int               `json:"finding_count"`
+	Artifact     string            `json:"artifact"`
+	Method       string            `json:"method"`
+	Limitation   string            `json:"limitation"`
+}
+
+// Denylist runs the literal-matching rules over a normalized graph.
+//
+// A denylist that fails to run is an error, not an empty finding list.
+func Denylist(cfg Config, graphJSON []byte) (DenylistReport, error) {
+	raw, err := run(cfg, graphJSON, DenylistQuery)
+	if err != nil {
+		return DenylistReport{}, err
+	}
+	value, err := expressionValue(raw)
+	if err != nil {
+		return DenylistReport{}, err
+	}
+	var report DenylistReport
+	if err := json.Unmarshal(value, &report); err != nil {
+		return DenylistReport{}, fmt.Errorf("the denylist returned a report this runner cannot read: %w", err)
+	}
+	if len(report.Rules) == 0 {
+		return DenylistReport{}, errors.New("the denylist reports having no rules at all")
+	}
+	if report.Findings == nil {
+		report.Findings = []DenylistFinding{}
 	}
 	return report, nil
 }

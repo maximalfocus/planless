@@ -32,16 +32,26 @@ func main() {
 		emit(os.Args[2])
 	case len(os.Args) == 2 && os.Args[1] == "drift":
 		drift()
-	case len(os.Args) == 2 && os.Args[1] == "remove-drift":
-		// An operator acting on what the drift check reported. The check itself
-		// never does this.
-		if err := tofu.RemoveDriftedGrant(config().StateAPI); err != nil {
+	case len(os.Args) == 2 && os.Args[1] == "remove-undeclared":
+		// An operator acting on what a check reported. No check ever does this.
+		removed, err := tofu.RemoveUndeclaredGrants(config().StateAPI)
+		if err != nil {
 			fmt.Fprintln(os.Stderr, "pipeline:", err)
 			os.Exit(1)
 		}
-		fmt.Println(`{"document":"planless.drift-removal","removed":true}`)
+		out, _ := json.Marshal(map[string]any{
+			"document": "planless.removal",
+			"removed":  removed,
+		})
+		fmt.Println(string(out))
 	case len(os.Args) == 2 && os.Args[1] == "reconcile":
 		reconcile()
+	case len(os.Args) == 2 && os.Args[1] == "compare-exposure":
+		if err := tofu.CompareExposures(os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, "pipeline:", err)
+			os.Exit(1)
+		}
+		fmt.Println(`{"document":"planless.comparison","identical_reachability":true}`)
 	case len(os.Args) == 2 && os.Args[1] == "compare-builds":
 		if err := tofu.CompareBuilds(os.Stdin); err != nil {
 			fmt.Fprintln(os.Stderr, "pipeline:", err)
@@ -58,7 +68,8 @@ func main() {
 		run(os.Args[1])
 	default:
 		fmt.Fprintf(os.Stderr,
-			"usage: pipeline <scenario>|reconcile|drift|remove-drift|compare-observations|compare-builds\n"+
+			"usage: pipeline <scenario>|reconcile|drift|remove-undeclared|"+
+				"compare-observations|compare-builds|compare-exposure\n"+
 				"available scenarios: %s\n", available())
 		os.Exit(64)
 	}

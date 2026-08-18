@@ -150,7 +150,8 @@ func (g *Graph) add(r planResource, prov map[string]Provenance, index *configInd
 	switch r.Type {
 	case "democloud_bucket":
 		g.Resources = append(g.Resources, Resource{
-			Kind: "bucket", Name: stringOf(r.Values["name"]), Address: r.Address, Provenance: prov,
+			Kind: "bucket", Name: stringOf(r.Values["name"]), Address: r.Address,
+			Attributes: attributesOf(r.Values), Provenance: prov,
 		})
 	case "democloud_object":
 		g.Resources = append(g.Resources, Resource{
@@ -191,6 +192,24 @@ func (g *Graph) sortAll() {
 	sort.Slice(g.Grants, func(i, j int) bool { return g.Grants[i].ID < g.Grants[j].ID })
 	sort.Slice(g.NetworkRules, func(i, j int) bool { return g.NetworkRules[i].ID < g.NetworkRules[j].ID })
 	sort.Slice(g.Segments, func(i, j int) bool { return g.Segments[i].Name < g.Segments[j].Name })
+}
+
+// attributesOf copies what the artifact said about a resource, so a policy can
+// read a field if it wants to. Nothing is dropped: a field the normalizer does
+// not recognize is still reported here, and separately as unrecognized.
+func attributesOf(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(values))
+	for k, v := range values {
+		if k == "content_base64" {
+			// Object content is never carried into a policy input.
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 func stringOf(v any) string {

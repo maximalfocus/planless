@@ -173,6 +173,15 @@ REFUSED
 	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-reach
 	restore
 
+	step "a denylist of known-bad literals, and the same desired state written two other ways"
+	vulnerable_scenario half-fix-denylist >"$DENYLIST_TRANSCRIPT"
+	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-reach
+
+	step "the two spellings compute to identical reachability"
+	cat "$VULNERABLE_TRANSCRIPT" "$DENYLIST_TRANSCRIPT" |
+		$COMPOSE exec -T pipeline /usr/local/bin/pipeline compare-exposure
+	restore
+
 	step "a gate that stands on the review path, and a second path that does not go through it"
 	vulnerable_scenario half-fix-review-path-only >/dev/null
 	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-reach
@@ -186,7 +195,7 @@ REFUSED
 	# resource no configuration describes. Somebody has to act on what the
 	# drift check reported.
 	step "the fix for drift: an operator removes what the check reported"
-	$COMPOSE exec -T pipeline /usr/local/bin/pipeline remove-drift
+	$COMPOSE exec -T pipeline /usr/local/bin/pipeline remove-undeclared
 	$COMPOSE exec -T pipeline /usr/local/bin/pipeline drift >/dev/null
 	restore
 
@@ -202,6 +211,11 @@ REFUSED
 # be closed once more. The fix is shown after every shape, not only described.
 restore() {
 	step "the fix: applying the secure value set closes it again"
+	# Each pipeline run starts from empty toolchain state, so an apply creates
+	# and updates but never destroys. A permission the secure value set does not
+	# declare has to be removed deliberately — which is exactly true of one that
+	# no configuration ever described.
+	$COMPOSE exec -T pipeline /usr/local/bin/pipeline remove-undeclared
 	scenario secure-apply >"$SECURE_TRANSCRIPT"
 	$COMPOSE exec -T outside /usr/local/bin/client internet-secure-baseline
 }
@@ -301,6 +315,7 @@ state() {
 
 VULNERABLE_TRANSCRIPT="${TMPDIR:-/tmp}/planless-vulnerable-transcript.json"
 SECURE_TRANSCRIPT="${TMPDIR:-/tmp}/planless-secure-transcript.json"
+DENYLIST_TRANSCRIPT="${TMPDIR:-/tmp}/planless-denylist-transcript.json"
 
 case "${1:-}" in
 verify)

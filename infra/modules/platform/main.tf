@@ -31,6 +31,17 @@ resource "democloud_grant" "status_page_read" {
   source_ranges = var.status_reader_sources
 }
 
+resource "democloud_grant" "export_extra" {
+  count = var.extra_export_grant == "none" ? 0 : 1
+
+  id            = "grant-fare-exports-extra-read"
+  resource_kind = "bucket"
+  resource_name = var.export_bucket
+  principals    = var.extra_export_grants[var.extra_export_grant].principals
+  actions       = ["read"]
+  source_ranges = var.extra_export_grants[var.extra_export_grant].source_ranges
+}
+
 resource "democloud_grant" "status_assets_read" {
   id            = "grant-status-assets-read"
   resource_kind = "bucket"

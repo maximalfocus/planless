@@ -44,3 +44,9 @@ variable "admin_profile" {
   default     = "operations-range"
   description = "Which of the module's admin exposure profiles applies."
 }
+
+variable "extra_export_grant" {
+  type        = string
+  default     = "none"
+  description = "Which of the module's additional refund-export permissions, if any, exists."
+}

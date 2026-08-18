@@ -285,3 +285,66 @@ func CompareBuilds(r io.Reader) error {
 	}
 	return nil
 }
+
+// CompareExposures requires every transcript on the stream to have computed the
+// same effective reachability for every resource they have in common.
+//
+// It is how "these are two spellings of one desired state" stops being an
+// argument. The rules that produced the exposure differ; who can reach what
+// does not.
+func CompareExposures(r io.Reader) error {
+	dec := json.NewDecoder(r)
+	first := map[string]string{}
+	firstScenario := ""
+	seen := 0
+	for {
+		var t Transcript
+		if err := dec.Decode(&t); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("the input stream could not be read: %w", err)
+		}
+		if t.Document != TranscriptDocument {
+			return fmt.Errorf("the input stream carries an unrecognized document %q", t.Document)
+		}
+		decision := t.WouldHaveDecided
+		if decision == nil {
+			decision = t.Decision
+		}
+		if decision == nil || len(decision.Exposures) == 0 {
+			return fmt.Errorf("transcript %s computed no exposure at all", t.Scenario)
+		}
+		current := map[string]string{}
+		for _, e := range decision.Exposures {
+			if e.Reachability == "" {
+				return fmt.Errorf("transcript %s reports no reachability for %s", t.Scenario, e.Resource)
+			}
+			current[e.Resource] = e.Reachability
+		}
+		seen++
+		if seen == 1 {
+			first, firstScenario = current, t.Scenario
+			continue
+		}
+		shared := 0
+		for resource, reach := range current {
+			want, ok := first[resource]
+			if !ok {
+				continue
+			}
+			shared++
+			if want != reach {
+				return fmt.Errorf("%s and %s computed different reachability for %s: %s vs %s",
+					firstScenario, t.Scenario, resource, want, reach)
+			}
+		}
+		if shared == 0 {
+			return fmt.Errorf("%s and %s have no resource in common", firstScenario, t.Scenario)
+		}
+	}
+	if seen < 2 {
+		return fmt.Errorf("comparison needs at least two transcripts, got %d", seen)
+	}
+	return nil
+}
