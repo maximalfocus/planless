@@ -21,6 +21,7 @@ usage: scripts/demo.sh <command>
   state      print live platform state through the control plane's read-only API
   checks     run the observation checks against an already running platform
   policy     run the deployment gate over the checked-in plan artifacts
+  refusals   run every refusal scenario against a running platform
 
 The secure platform is the default. Nothing in this project accepts a cloud
 endpoint, credential, region, account, bucket name, address or manifest.
@@ -71,9 +72,35 @@ offline_init() {
 	$COMPOSE run --rm -T pipeline-offline offline-init
 }
 
+# One scenario, end to end: the harness runs it, each segment reports what it
+# could reach, and the reconciliation compares the two. Every assertion is made
+# inside a container; this function only orders the steps.
+scenario() {
+	step "scenario: $1"
+	transcript="$($COMPOSE run --rm -T pipeline "$1")"
+	internet="$($COMPOSE run --rm -T outside observe)"
+	corp="$($COMPOSE run --rm -T finance observe)"
+	printf '%s\n%s\n%s\n' "$transcript" "$internet" "$corp" |
+		$COMPOSE run --rm -T pipeline reconcile >/dev/null
+}
+
 apply() {
-	step "the real toolchain plans and applies the checked-in configuration"
-	$COMPOSE run --rm -T pipeline secure-apply
+	scenario secure-apply
+}
+
+refusals() {
+	for name in \
+		refuse-anonymous-export \
+		refuse-unrestricted-admin \
+		fail-closed-unparsable \
+		fail-closed-unknown-type \
+		fail-closed-unrecognized-field \
+		fail-closed-engine-error \
+		binding-unapproved-plan \
+		binding-modified-plan \
+		binding-stale-approval; do
+		scenario "$name"
+	done
 }
 
 containment_gate() {
@@ -136,6 +163,7 @@ verify)
 	policy_gate
 	up
 	selfchecks
+	refusals
 	apply
 	checks
 	down
@@ -146,6 +174,7 @@ up) build; up; apply ;;
 down) down ;;
 apply) apply ;;
 policy) policy_gate ;;
+refusals) refusals ;;
 checks) checks ;;
 state) state ;;
 *) usage; exit 64 ;;

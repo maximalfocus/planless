@@ -1,9 +1,9 @@
-// Command pipeline runs one enumerated deployment scenario end to end: the real
-// infrastructure-as-code toolchain, from a local provider mirror, against the
-// fictional democloud control plane.
+// Command pipeline is the demonstration's harness. It runs one enumerated
+// deployment scenario end to end and records what each stage actually produced.
 //
 // It accepts a scenario id and nothing else. There is no endpoint, credential,
-// region, account, bucket name, address, manifest, or variable-file parameter.
+// region, account, bucket name, address, manifest, policy, allowlist or
+// variable-file parameter anywhere on this surface.
 package main
 
 import (
@@ -16,29 +16,62 @@ import (
 )
 
 func main() {
-	// `emit` prints only the canonical resolved artifact, so the checked-in
-	// policy fixtures can be regenerated from a real plan rather than written
-	// by hand.
-	if len(os.Args) == 3 && os.Args[1] == "emit" {
+	switch {
+	case len(os.Args) == 3 && os.Args[1] == "emit":
+		// `emit` prints only the canonical resolved artifact, so the checked-in
+		// policy fixtures can be regenerated from a real plan rather than
+		// written by hand.
 		emit(os.Args[2])
-		return
-	}
-	if len(os.Args) != 2 {
-		fmt.Fprintf(os.Stderr, "usage: pipeline <scenario>\navailable: %s\n", available())
+	case len(os.Args) == 2 && os.Args[1] == "reconcile":
+		reconcile()
+	case len(os.Args) == 2:
+		run(os.Args[1])
+	default:
+		fmt.Fprintf(os.Stderr, "usage: pipeline <scenario>|reconcile\navailable scenarios: %s\n", available())
 		os.Exit(64)
 	}
-	scenario, ok := tofu.Scenarios[os.Args[1]]
+}
+
+// run executes one scenario. The machine-readable transcript goes to standard
+// output so it can be reconciled with what each segment observed; the
+// human-readable form goes to standard error, where a reader sees it.
+func run(name string) {
+	scenario, ok := tofu.Scenarios[name]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "unknown scenario %q; available: %s\n", os.Args[1], available())
+		fmt.Fprintf(os.Stderr, "unknown scenario %q; available: %s\n", name, available())
 		os.Exit(64)
 	}
 	transcript, err := tofu.Run(config(), scenario)
-	out, _ := json.MarshalIndent(transcript, "", "  ")
-	fmt.Println(string(out))
+	emitTranscript(transcript)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "pipeline:", err)
 		os.Exit(1)
 	}
+}
+
+func reconcile() {
+	transcript, err := tofu.Reconcile(config(), os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "pipeline:", err)
+		os.Exit(2)
+	}
+	emitTranscript(transcript)
+	if !transcript.Passed {
+		os.Exit(1)
+	}
+}
+
+func emitTranscript(t *tofu.Transcript) {
+	if t == nil {
+		return
+	}
+	out, err := json.Marshal(t)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "pipeline:", err)
+		os.Exit(2)
+	}
+	fmt.Println(string(out))
+	fmt.Fprintln(os.Stderr, t.Render())
 }
 
 func emit(name string) {
@@ -47,8 +80,6 @@ func emit(name string) {
 		fmt.Fprintf(os.Stderr, "unknown scenario %q; available: %s\n", name, available())
 		os.Exit(64)
 	}
-	scenario.SkipApply = true
-	scenario.SkipRemote = true
 	raw, err := tofu.Plan(config(), scenario)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "pipeline:", err)
@@ -59,13 +90,17 @@ func emit(name string) {
 
 func config() tofu.Config {
 	return tofu.Config{
-		Tofu:      env("PLANLESS_TOFU", "/usr/local/bin/tofu"),
-		InfraDir:  env("PLANLESS_INFRA", "/infra"),
-		WorkDir:   env("PLANLESS_WORK", "/artifacts/work"),
-		DataDir:   env("PLANLESS_TOFU_DATA", "/plugins/data"),
-		TempDir:   env("PLANLESS_TMP", "/tmp"),
-		CLIConfig: env("PLANLESS_TOFU_CLI_CONFIG", "/etc/tofurc"),
-		StateAPI:  "http://controlplane:8080",
+		Tofu:         env("PLANLESS_TOFU", "/usr/local/bin/tofu"),
+		InfraDir:     env("PLANLESS_INFRA", "/infra"),
+		WorkDir:      env("PLANLESS_WORK", "/artifacts/work"),
+		DataDir:      env("PLANLESS_TOFU_DATA", "/plugins/data"),
+		TempDir:      env("PLANLESS_TMP", "/tmp"),
+		CLIConfig:    env("PLANLESS_TOFU_CLI_CONFIG", "/etc/tofurc"),
+		StateAPI:     "http://controlplane:8080",
+		OPA:          env("PLANLESS_OPA", "/usr/local/bin/opa"),
+		PolicyDir:    env("PLANLESS_POLICY", "/policy/rego"),
+		AllowlistDir: env("PLANLESS_ALLOWLISTS", "/policy/allowlists"),
+		ArtifactDir:  env("PLANLESS_ARTIFACTS", "/testdata/plans"),
 	}
 }
 

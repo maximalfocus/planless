@@ -82,4 +82,8 @@ COPY --from=provider-builder "/out/terraform-provider-democloud_v${PROVIDER_VERS
 COPY deploy/tofurc /etc/tofurc
 COPY infra /infra
 COPY policy /policy
+# The checked-in plan artifacts the refusal scenarios are proved against. No
+# vulnerable configuration exists in this repository, so refusal is proved
+# against artifacts rather than against a value set that could be applied.
+COPY testdata/plans /testdata/plans
 USER 65532:65532

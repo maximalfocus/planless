@@ -8,10 +8,10 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** the platform, the toolchain, and now the policy contract and the deny-by-default policy
-> are in. The gate is a standalone decision surface: it reads a resolved plan artifact and answers
-> admit or deny. Binding that decision to the apply, and the harness and transcript around it, are the
-> next outcome. There is no misconfigured variant in the repository.
+> **Status:** the platform, the toolchain, the policy, and now the gate's authority over the apply.
+> The harness runs enumerated scenarios end to end and produces the transcript. Still to come in this
+> slice: the five secure legitimate paths and the complete secure regression matrix. There is no
+> misconfigured variant in the repository.
 
 ## What this slice establishes
 
@@ -96,6 +96,58 @@ severity threshold, or advisory mode that turns any of them into a warning.
 
 Refusal is proved against **checked-in modified plan artifacts** under `testdata/plans/`. No vulnerable
 configuration exists in the repository.
+
+## The gate's authority
+
+A decision nobody has to obey is a log line. So the gate's approval names the exact plan artifact by
+digest, and the apply step re-reads that artifact, recomputes its digest, and refuses on any mismatch
+**before contacting the control plane at all**. Three refusals are rehearsed as scenarios:
+
+| Scenario | What it rehearses |
+|---|---|
+| `binding-unapproved-plan` | an apply with no approval at all |
+| `binding-modified-plan` | an artifact changed after the gate approved it — one appended byte is enough |
+| `binding-stale-approval` | an approval issued for a different run |
+
+Every refusal returns the identical generic `DEPLOY_REFUSED` result. An operator learns that the
+deployment was refused and nothing about whether a resource, field, allowlist entry or principal
+exists. Exactly one structured audit event is emitted per refusal, carrying a deterministic correlation
+id, the scenario, a stable failure class, the rule and the stage — and nothing else. The detail lives
+in the transcript, which is material for a reviewer, not a response to a caller.
+
+Every refusal scenario additionally asserts that the platform state digest before and after the run is
+identical. Nothing refused ever changes anything.
+
+## The harness and the transcript
+
+`./scripts/demo.sh verify` runs each scenario through the harness, then asks each segment what it could
+actually reach, then reconciles the two. The reconciliation never reads the gate's verdict: a policy
+decision is not evidence of exposure state, so the question "is anything reachable from the public
+segment that nobody reviewed?" is answered from observations alone.
+
+Each scenario declares its expected outcome, and the harness fails if the outcome differs — so a
+scenario that starts passing for the wrong reason fails.
+
+```
+scenario secure-apply (secure-apply-...)
+
+artifacts
+  source configuration               sha256:…
+  resolved desired state             sha256:…
+  plan artifact (apply input)        sha256:…
+  artifact the policy evaluated      sha256:…
+  evaluated by                       the deny-by-default policy, over the resolved desired state
+  applied state                      sha256:…
+
+computed effective exposure
+  bucket/status-page                 principals=["*"] sources=["0.0.0.0/0"]  [allow-status-page-public]
+  …
+
+enforcement / audit / observations / reconciliation
+```
+
+The transcript exists in two deterministic forms: JSON on standard output, the human-readable form on
+standard error.
 
 ## The fixtures
 

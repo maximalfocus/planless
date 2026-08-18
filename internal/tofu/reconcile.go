@@ -1,0 +1,193 @@
+package tofu
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/netip"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/maximalfocus/planless/internal/fixtures"
+	"github.com/maximalfocus/planless/internal/netset"
+)
+
+// Verdicts the reconciliation reports.
+const (
+	VerdictPass = "PASS"
+	VerdictFail = "FAIL"
+)
+
+type allowlistDocument struct {
+	Allowlist struct {
+		Name    string `json:"name"`
+		Entries []struct {
+			Rule       string   `json:"rule"`
+			Kind       string   `json:"kind"`
+			Name       string   `json:"name"`
+			Principals []string `json:"principals"`
+			Sources    []string `json:"sources"`
+		} `json:"entries"`
+	} `json:"allowlist"`
+}
+
+// PublicEntries returns the resources a reviewed allowlist names as reachable
+// from the public segment. It is computed from the entry's own address ranges,
+// never from a label somebody wrote next to it.
+func PublicEntries(allowlistPath string) ([]string, error) {
+	body, err := os.ReadFile(allowlistPath)
+	if err != nil {
+		return nil, err
+	}
+	var doc allowlistDocument
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, fmt.Errorf("the reviewed allowlist could not be read: %w", err)
+	}
+	if len(doc.Allowlist.Entries) == 0 {
+		return nil, errors.New("the reviewed allowlist names no entries")
+	}
+	publicProbe, err := netip.ParseAddr(fixtures.ProbeAddress)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, entry := range doc.Allowlist.Entries {
+		set, err := netset.Parse(entry.Sources)
+		if err != nil {
+			return nil, fmt.Errorf("allowlist entry %s: %w", entry.Rule, err)
+		}
+		if !set.Contains(publicProbe) {
+			continue
+		}
+		if entry.Kind == "bucket" && !anonymous(entry.Principals) {
+			continue
+		}
+		out = append(out, entry.Kind+"/"+entry.Name)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func anonymous(principals []string) bool {
+	for _, p := range principals {
+		if p == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+// Reconcile merges a transcript with the observations each segment reported and
+// answers the only question that matters: is anything reachable from the public
+// segment that nobody reviewed?
+//
+// It never reads the gate's verdict to answer that. A policy decision is not
+// evidence of exposure state.
+func Reconcile(cfg Config, r io.Reader) (*Transcript, error) {
+	transcript, observations, err := readStream(r)
+	if err != nil {
+		return nil, err
+	}
+	transcript.Observations = sortObservations(observations)
+
+	scenario, ok := Scenarios[transcript.Scenario]
+	if !ok {
+		return nil, fmt.Errorf("the transcript names an unknown scenario %q", transcript.Scenario)
+	}
+	allowed, err := PublicEntries(filepath.Join(cfg.AllowlistDir, scenario.AllowlistOf()))
+	if err != nil {
+		return nil, err
+	}
+
+	reachable := []string{}
+	for _, o := range transcript.Observations {
+		if o.Segment != fixtures.SegmentInternet || !o.Reachable {
+			continue
+		}
+		reachable = append(reachable, o.Resource)
+	}
+	sort.Strings(reachable)
+
+	unreviewed := []string{}
+	for _, r := range reachable {
+		if !contains(allowed, r) {
+			unreviewed = append(unreviewed, r)
+		}
+	}
+
+	rec := &Reconciliation{
+		Verdict:           VerdictPass,
+		Reason:            "no resource is reachable from the public segment except those the allowlist names",
+		PubliclyReachable: reachable,
+		AllowedPublic:     allowed,
+	}
+	if len(unreviewed) > 0 {
+		rec.Verdict = VerdictFail
+		rec.Reason = "reachable from the public segment with no policy decision permitting it: " +
+			strings.Join(unreviewed, ", ")
+	}
+	transcript.Reconcile = rec
+	transcript.Passed = transcript.Passed && rec.Verdict == VerdictPass
+	return transcript, nil
+}
+
+func contains(list []string, v string) bool {
+	for _, e := range list {
+		if e == v {
+			return true
+		}
+	}
+	return false
+}
+
+// readStream reads one transcript and any number of observation sets from a
+// stream of JSON documents.
+func readStream(r io.Reader) (*Transcript, []Observation, error) {
+	dec := json.NewDecoder(r)
+	var transcript *Transcript
+	var observations []Observation
+	for {
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, nil, fmt.Errorf("the input stream could not be read: %w", err)
+		}
+		var head struct {
+			Document string `json:"document"`
+		}
+		if err := json.Unmarshal(raw, &head); err != nil {
+			return nil, nil, err
+		}
+		switch head.Document {
+		case TranscriptDocument:
+			if transcript != nil {
+				return nil, nil, errors.New("the input stream carries more than one transcript")
+			}
+			var t Transcript
+			if err := json.Unmarshal(raw, &t); err != nil {
+				return nil, nil, err
+			}
+			transcript = &t
+		case ObservationDocument:
+			var set ObservationSet
+			if err := json.Unmarshal(raw, &set); err != nil {
+				return nil, nil, err
+			}
+			observations = append(observations, set.Observations...)
+		default:
+			return nil, nil, fmt.Errorf("the input stream carries an unrecognized document %q", head.Document)
+		}
+	}
+	if transcript == nil {
+		return nil, nil, errors.New("the input stream carries no transcript")
+	}
+	if len(observations) == 0 {
+		return nil, nil, errors.New("the input stream carries no observations")
+	}
+	return transcript, observations, nil
+}
