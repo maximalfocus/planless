@@ -126,6 +126,28 @@ var Scenarios = map[string]Scenario{
 		Binding:     BindingModified,
 		Expect:      ExpectRefused,
 	},
+	"reviewed-exposure-unapproved": {
+		ID:          "reviewed-exposure-unapproved",
+		Description: "publishing a second status asset, against the allowlist that does not name it",
+		VarFile:     "reviewed-exposure.tfvars",
+		Gated:       true,
+		Expect:      ExpectRefused,
+	},
+	"reviewed-exposure": {
+		ID:          "reviewed-exposure",
+		Description: "the same change, against a reviewed allowlist that names the new exposure",
+		VarFile:     "reviewed-exposure.tfvars",
+		Allowlist:   "reviewed-exposure.json",
+		Gated:       true,
+		Expect:      ExpectApplied,
+	},
+	"routine-change": {
+		ID:          "routine-change",
+		Description: "an ordinary non-security change: keep access logs for longer",
+		VarFile:     "routine-change.tfvars",
+		Gated:       true,
+		Expect:      ExpectApplied,
+	},
 	"binding-stale-approval": {
 		ID:          "binding-stale-approval",
 		Description: "an apply attempted with an approval issued for a different run",

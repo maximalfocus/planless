@@ -22,6 +22,7 @@ usage: scripts/demo.sh <command>
   checks     run the observation checks against an already running platform
   policy     run the deployment gate over the checked-in plan artifacts
   refusals   run every refusal scenario against a running platform
+  paths      run the five secure legitimate paths against a running platform
 
 The secure platform is the default. Nothing in this project accepts a cloud
 endpoint, credential, region, account, bucket name, address or manifest.
@@ -54,17 +55,8 @@ go_gate() {
 }
 
 policy_gate() {
-	step "the deployment gate decides the checked-in plan artifacts"
-	$COMPOSE run --rm -T --entrypoint /usr/local/bin/gate pipeline-offline evaluate \
-		< testdata/plans/secure.json
-	for artifact in testdata/plans/modified-*.json; do
-		printf '\n--- %s must be refused\n' "$artifact"
-		if $COMPOSE run --rm -T --entrypoint /usr/local/bin/gate pipeline-offline evaluate \
-			< "$artifact"; then
-			echo "the gate admitted $artifact" >&2
-			exit 1
-		fi
-	done
+	step "the deployment gate decides every checked-in plan artifact"
+	$COMPOSE run --rm -T --entrypoint /usr/local/bin/gate pipeline-offline verify-fixtures
 }
 
 offline_init() {
@@ -78,14 +70,40 @@ offline_init() {
 scenario() {
 	step "scenario: $1"
 	transcript="$($COMPOSE run --rm -T pipeline "$1")"
-	internet="$($COMPOSE run --rm -T outside observe)"
-	corp="$($COMPOSE run --rm -T finance observe)"
-	printf '%s\n%s\n%s\n' "$transcript" "$internet" "$corp" |
+	# Both segments report at once: neither observation depends on the other.
+	work="$(mktemp -d)"
+	$COMPOSE run --rm -T outside observe >"$work/internet" &
+	internet_probe=$!
+	$COMPOSE run --rm -T finance observe >"$work/corp" &
+	corp_probe=$!
+	wait "$internet_probe"
+	wait "$corp_probe"
+	printf '%s\n' "$transcript" | cat - "$work/internet" "$work/corp" |
 		$COMPOSE run --rm -T pipeline reconcile >/dev/null
+	rm -rf "$work"
 }
 
 apply() {
 	scenario secure-apply
+}
+
+# The five legitimate paths. A deny-by-default policy is only worth having if
+# the legitimate work still goes through.
+legitimate() {
+	step "a reviewed exposure change, against the allowlist that does not name it"
+	scenario reviewed-exposure-unapproved
+	$COMPOSE run --rm -T outside internet-secure-baseline
+
+	step "an ordinary non-security change must alter nothing about reachability"
+	before="$($COMPOSE run --rm -T outside observe)"
+	scenario routine-change
+	after="$($COMPOSE run --rm -T outside observe)"
+	printf '%s\n%s\n' "$before" "$after" |
+		$COMPOSE run --rm -T pipeline compare-observations
+
+	step "the same exposure change, against a reviewed allowlist that names it"
+	scenario reviewed-exposure
+	$COMPOSE run --rm -T outside internet-reviewed-exposure
 }
 
 refusals() {
@@ -166,6 +184,7 @@ verify)
 	refusals
 	apply
 	checks
+	legitimate
 	down
 	printf '\n=== planless: every check passed\n'
 	;;
@@ -175,6 +194,7 @@ down) down ;;
 apply) apply ;;
 policy) policy_gate ;;
 refusals) refusals ;;
+paths) legitimate ;;
 checks) checks ;;
 state) state ;;
 *) usage; exit 64 ;;

@@ -33,6 +33,10 @@ type Segment struct {
 type Bucket struct {
 	Name      string `json:"name"`
 	Encrypted bool   `json:"encrypted"`
+
+	// LogRetentionDays is an ordinary operational setting with no bearing on
+	// who can reach anything.
+	LogRetentionDays int `json:"log_retention_days"`
 }
 
 // Object is a stored blob. State renders its digest and size, never its bytes.

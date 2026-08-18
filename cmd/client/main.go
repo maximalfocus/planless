@@ -35,6 +35,7 @@ const (
 const (
 	pathRefundExport = "/v1/storage/fare-exports/rider-refunds-2026-03.csv"
 	pathStatusPage   = "/v1/storage/status-page/status.json"
+	pathStatusAssets = "/v1/storage/status-assets/assets.json"
 	pathFareService  = "/v1/net/fare-engine/service/fares"
 	pathAdminStatus  = "/v1/net/fare-engine/admin/admin/status"
 	pathAdminFareCap = "/v1/net/fare-engine/admin/admin/fare-cap"
@@ -74,12 +75,13 @@ type report struct {
 }
 
 var checks = map[string]func() []step{
-	"internet-secure-baseline":  internetSecureBaseline,
-	"finance-corp-read":         financeCorpRead,
-	"ops-admin-read":            opsAdminRead,
-	"state-matches-fixture":     stateMatchesFixture,
-	"ops-admin-change":          opsAdminChange,
-	"ledger-records-one-change": ledgerRecordsOneChange,
+	"internet-secure-baseline":   internetSecureBaseline,
+	"internet-reviewed-exposure": internetReviewedExposure,
+	"finance-corp-read":          financeCorpRead,
+	"ops-admin-read":             opsAdminRead,
+	"state-matches-fixture":      stateMatchesFixture,
+	"ops-admin-change":           opsAdminChange,
+	"ledger-records-one-change":  ledgerRecordsOneChange,
 }
 
 func main() {
@@ -120,6 +122,7 @@ func observe() {
 		Segment:  segment,
 		Observations: []tofu.Observation{
 			observation(role, segment, "bucket/status-page", pathStatusPage),
+			observation(role, segment, "bucket/status-assets", pathStatusAssets),
 			observation(role, segment, "bucket/fare-exports", pathRefundExport),
 			observation(role, segment, "workload/fare-engine:admin", pathAdminStatus),
 			observation(role, segment, "workload/fare-engine:service", pathFareService),
@@ -210,6 +213,8 @@ func internetSecureBaseline() []step {
 			canon.Digest(fixtures.StatusJSON()), "public status page is readable from the internet segment"),
 		expectStatus(outsideRole, http.MethodGet, pathRefundExport, http.StatusForbidden,
 			"refund export is refused from the internet segment"),
+		expectStatus(outsideRole, http.MethodGet, pathStatusAssets, http.StatusForbidden,
+			"the unpublished second status asset is refused from the internet segment"),
 		expectStatus(outsideRole, http.MethodGet, pathAdminStatus, http.StatusForbidden,
 			"fare engine admin port is refused from the internet segment"),
 		expectStatus(outsideRole, http.MethodGet, pathFareService, http.StatusForbidden,
@@ -217,10 +222,28 @@ func internetSecureBaseline() []step {
 	}
 }
 
+// internetReviewedExposure is the other half of the reviewed exposure change:
+// once an allowlist entry names it, the second asset is public, and the probe
+// client reads exactly the checked-in bytes.
+func internetReviewedExposure() []step {
+	return []step{
+		expectStatusAndBody(outsideRole, http.MethodGet, pathStatusAssets, http.StatusOK,
+			canon.Digest(fixtures.AssetsJSON()), "the reviewed second status asset is readable from the internet segment"),
+		expectStatusAndBody(outsideRole, http.MethodGet, pathStatusPage, http.StatusOK,
+			canon.Digest(fixtures.StatusJSON()), "the status page is still readable from the internet segment"),
+		expectStatus(outsideRole, http.MethodGet, pathRefundExport, http.StatusForbidden,
+			"the refund export is still refused from the internet segment"),
+		expectStatus(outsideRole, http.MethodGet, pathAdminStatus, http.StatusForbidden,
+			"the fare engine admin port is still refused from the internet segment"),
+	}
+}
+
 func financeCorpRead() []step {
 	return []step{
 		expectStatusAndBody(financeRole, http.MethodGet, pathRefundExport, http.StatusOK,
 			canon.Digest(fixtures.RefundsCSV()), "finance principal reads the refund export from the corporate segment"),
+		expectStatusAndBody(financeRole, http.MethodGet, pathStatusAssets, http.StatusOK,
+			canon.Digest(fixtures.AssetsJSON()), "finance reads the unpublished second status asset from the corporate segment"),
 		expectStatus(financeRole, http.MethodGet, pathFareService, http.StatusOK,
 			"fare engine service port answers the corporate segment"),
 		expectStatus(financeRole, http.MethodGet, pathAdminStatus, http.StatusForbidden,

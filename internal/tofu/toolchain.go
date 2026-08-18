@@ -43,6 +43,7 @@ func prepare(cfg Config) error {
 	for name, body := range map[string][]byte{
 		fixtures.ObjectRefunds: fixtures.RefundsCSV(),
 		fixtures.ObjectStatus:  fixtures.StatusJSON(),
+		fixtures.ObjectAssets:  fixtures.AssetsJSON(),
 	} {
 		if err := os.WriteFile(filepath.Join(dataDir, name), body, 0o600); err != nil {
 			return err

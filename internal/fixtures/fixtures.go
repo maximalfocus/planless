@@ -19,8 +19,14 @@ const (
 	BucketFareExports = "fare-exports"
 	BucketStatusPage  = "status-page"
 
+	// BucketStatusAssets holds a second status asset. Publishing it is the
+	// demonstration's reviewed exposure change: refused by the current
+	// allowlist, admitted only by an allowlist that names it.
+	BucketStatusAssets = "status-assets"
+
 	ObjectRefunds = "rider-refunds-2026-03.csv"
 	ObjectStatus  = "status.json"
+	ObjectAssets  = "assets.json"
 
 	WorkloadFareEngine = "fare-engine"
 	PortService        = "service"
@@ -39,6 +45,14 @@ const (
 	ControlPlaneCorpAddr = "10.20.1.10"
 	FareEngineAddr       = "10.20.1.20"
 
+	// DefaultLogRetentionDays is an ordinary operational setting with no
+	// security meaning at all. Changing it is the demonstration's proof that
+	// the gate is not an obstacle to routine work.
+	DefaultLogRetentionDays = 30
+
+	// RoutineLogRetentionDays is what the routine-change scenario sets it to.
+	RoutineLogRetentionDays = 90
+
 	// ProbeAddress is where the public-segment probe client sits. It is used to
 	// ask whether a reviewed exposure actually reaches the public segment.
 	ProbeAddress = "198.51.100.50"
@@ -50,11 +64,17 @@ var refundsCSV []byte
 //go:embed data/status.json
 var statusJSON []byte
 
+//go:embed data/assets.json
+var assetsJSON []byte
+
 // RefundsCSV returns the exact fictional refund export bytes.
 func RefundsCSV() []byte { return append([]byte(nil), refundsCSV...) }
 
 // StatusJSON returns the exact fictional status page bytes.
 func StatusJSON() []byte { return append([]byte(nil), statusJSON...) }
+
+// AssetsJSON returns the exact fictional second status asset bytes.
+func AssetsJSON() []byte { return append([]byte(nil), assetsJSON...) }
 
 // Segments returns the two network segments the demonstration runs on.
 func Segments() []platform.Segment {
@@ -81,6 +101,7 @@ func Bootstrap() platform.State {
 		Grants: []platform.Grant{
 			deployScope("grant-deploy-fare-exports", platform.KindBucket, BucketFareExports),
 			deployScope("grant-deploy-status-page", platform.KindBucket, BucketStatusPage),
+			deployScope("grant-deploy-status-assets", platform.KindBucket, BucketStatusAssets),
 			deployScope("grant-deploy-fare-engine", platform.KindWorkload, WorkloadFareEngine),
 		},
 	}
@@ -105,18 +126,28 @@ func deployScope(id, kind, name string) platform.Grant {
 func SecureBaseline() platform.State {
 	st := Bootstrap()
 	st.Buckets = []platform.Bucket{
-		{Name: BucketFareExports, Encrypted: true},
-		{Name: BucketStatusPage, Encrypted: true},
+		{Name: BucketFareExports, Encrypted: true, LogRetentionDays: DefaultLogRetentionDays},
+		{Name: BucketStatusPage, Encrypted: true, LogRetentionDays: DefaultLogRetentionDays},
+		{Name: BucketStatusAssets, Encrypted: true, LogRetentionDays: DefaultLogRetentionDays},
 	}
 	st.Objects = []platform.Object{
 		{Bucket: BucketFareExports, Key: ObjectRefunds, ContentType: "text/csv"},
 		{Bucket: BucketStatusPage, Key: ObjectStatus, ContentType: "application/json"},
+		{Bucket: BucketStatusAssets, Key: ObjectAssets, ContentType: "application/json"},
 	}
 	st.Grants = append(st.Grants,
 		platform.Grant{
 			ID:           "grant-fare-exports-finance-read",
 			ResourceKind: platform.KindBucket,
 			ResourceName: BucketFareExports,
+			Principals:   []string{PrincipalFinance},
+			Actions:      []string{platform.ActionRead},
+			SourceRanges: []string{CorpCIDR},
+		},
+		platform.Grant{
+			ID:           "grant-status-assets-read",
+			ResourceKind: platform.KindBucket,
+			ResourceName: BucketStatusAssets,
 			Principals:   []string{PrincipalFinance},
 			Actions:      []string{platform.ActionRead},
 			SourceRanges: []string{CorpCIDR},
@@ -150,6 +181,7 @@ func Bodies() map[string][]byte {
 	return map[string][]byte{
 		BucketFareExports + "/" + ObjectRefunds: RefundsCSV(),
 		BucketStatusPage + "/" + ObjectStatus:   StatusJSON(),
+		BucketStatusAssets + "/" + ObjectAssets: AssetsJSON(),
 	}
 }
 

@@ -1,0 +1,9 @@
+{
+  "operator": "Halloway Transit Authority",
+  "notice": "This is fictional demonstration data. Publishing it is a reviewed exposure change.",
+  "published_on": "2026-03-31",
+  "assets": [
+    {"name": "network-map", "revision": 14},
+    {"name": "fare-table", "revision": 9}
+  ]
+}

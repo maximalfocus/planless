@@ -63,10 +63,10 @@ func TestSecureArtifactNormalizesToTheContract(t *testing.T) {
 	for _, r := range g.Resources {
 		kinds[r.Kind]++
 	}
-	if kinds["bucket"] != 2 || kinds["object"] != 2 || kinds["workload"] != 1 {
+	if kinds["bucket"] != 3 || kinds["object"] != 3 || kinds["workload"] != 1 {
 		t.Fatalf("unexpected resource kinds: %v", kinds)
 	}
-	if len(g.Grants) != 2 || len(g.NetworkRules) != 2 {
+	if len(g.Grants) != 3 || len(g.NetworkRules) != 2 {
 		t.Fatalf("expected two grants and two rules, got %d and %d", len(g.Grants), len(g.NetworkRules))
 	}
 }

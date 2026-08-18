@@ -8,10 +8,10 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** the platform, the toolchain, the policy, and now the gate's authority over the apply.
-> The harness runs enumerated scenarios end to end and produces the transcript. Still to come in this
-> slice: the five secure legitimate paths and the complete secure regression matrix. There is no
-> misconfigured variant in the repository.
+> **Status:** the secure half of the demonstration is complete. A real toolchain plans, a
+> deny-by-default policy decides the resolved artifact, the approval is bound to the apply by digest,
+> and the legitimate work — including one deliberately public thing — still goes through. The
+> misconfigured variants come next; there are none in the repository yet.
 
 ## What this slice establishes
 
@@ -149,6 +149,26 @@ enforcement / audit / observations / reconciliation
 The transcript exists in two deterministic forms: JSON on standard output, the human-readable form on
 standard error.
 
+## The gate is not an obstacle
+
+A deny-by-default policy is only worth having if the legitimate work still goes through. Five paths
+prove it:
+
+| Path | What it shows |
+|---|---|
+| the finance principal reads the refund export from `corp` | the intended access is untouched; an anonymous corporate caller still is not |
+| the admin port answers inside `10.20.7.0/24` and refuses outside it | the operations range works, and only it |
+| the probe client reads the status page in every secure scenario | the fix is **not** "nothing may be public" |
+| `reviewed-exposure-unapproved` → refused; `reviewed-exposure` → admitted | publishing a second status asset is refused by the current allowlist, and admitted only under a scenario whose own checked-in allowlist names it |
+| `routine-change` | an ordinary change — keep access logs for longer — is admitted, applied, and alters nothing about who can reach what |
+
+The fourth is the one worth reading twice. **No runtime flag, environment variable or severity setting
+can widen exposure.** The only way is to write the entry down in an allowlist and have somebody review
+it — and the two allowlists differ in exactly that one entry, which a test asserts.
+
+The fifth is proved by observation rather than by argument: the probe client reports what it can reach
+before the change and after it, and the two reports must be **byte-identical**.
+
 ## The fixtures
 
 Halloway Transit Authority is invented, as is every rider, refund, bucket, address and workload.
@@ -157,6 +177,7 @@ Halloway Transit Authority is invented, as is every rider, refund, bucket, addre
 |---|---|
 | `fare-exports` bucket, holding `rider-refunds-2026-03.csv` | readable only by `finance-reporting`, only from the corporate segment |
 | `status-page` bucket, holding `status.json` | **deliberately public** — proof that the fix is not "nothing may be public" |
+| `status-assets` bucket, holding `assets.json` | unpublished; publishing it is the reviewed exposure change |
 | `fare-engine` workload, service port and admin port | admin port reachable only from the operations range `10.20.7.0/24` |
 | `platform-deployer` principal | scoped to exactly these resources, identical in every variant |
 

@@ -11,7 +11,7 @@ import (
 // attribute outside this set is an unrecognized security-relevant field until
 // proven otherwise, and the policy denies on it.
 var knownAttributes = map[string]map[string]bool{
-	"democloud_bucket":       set("name", "encrypted", "id"),
+	"democloud_bucket":       set("name", "encrypted", "log_retention_days", "id"),
 	"democloud_object":       set("bucket", "key", "content_type", "content_base64", "id"),
 	"democloud_grant":        set("id", "resource_kind", "resource_name", "principals", "actions", "source_ranges"),
 	"democloud_workload":     set("name", "address", "ports", "id"),

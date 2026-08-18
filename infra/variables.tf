@@ -20,3 +20,21 @@ variable "status_reader_sources" {
   type        = list(string)
   description = "Source address ranges from which the status page may be read."
 }
+
+variable "assets_readers" {
+  type        = list(string)
+  description = "Principals admitted to read the second status asset."
+}
+
+variable "assets_reader_sources" {
+  type        = list(string)
+  description = "Source address ranges from which the second status asset may be read."
+}
+
+# An ordinary operational setting with no security meaning at all. It is here to
+# show that a routine change passes the gate untouched.
+variable "log_retention_days" {
+  type        = number
+  default     = 30
+  description = "How long bucket access logs are kept."
+}
