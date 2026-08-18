@@ -28,10 +28,22 @@ const (
 	OriginUnknown       Origin = "unknown"
 )
 
-// Provenance records where one resolved value came from.
-type Provenance struct {
+// Contribution is one variable that took part in deciding a resolved value.
+type Contribution struct {
 	Origin    Origin `json:"origin"`
-	Reference string `json:"reference,omitempty"`
+	Reference string `json:"reference"`
+}
+
+// Provenance records where one resolved value came from.
+//
+// A value can be decided by more than one variable — a module default holding
+// the addresses, selected by a key from the variable file — so every
+// contributing reference is recorded. Origin names the least visible of them,
+// because that is the one a reader is least likely to have opened.
+type Provenance struct {
+	Origin       Origin         `json:"origin"`
+	Reference    string         `json:"reference,omitempty"`
+	Contributors []Contribution `json:"contributors,omitempty"`
 }
 
 // Port is a declared listener with the address it binds.

@@ -36,3 +36,32 @@ func (c *httpClient) stateDigest(base string) (string, error) {
 	}
 	return payload.Digest, nil
 }
+
+// applicationBuild asks the fare engine what build is serving, through the
+// platform's own fabric. It is how "the application is identical across
+// variants" becomes a comparison rather than a claim.
+func applicationBuild(base string) (string, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(base + "/v1/net/fare-engine/service/fares")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("the fare engine returned %d", resp.StatusCode)
+	}
+	var payload struct {
+		BuildDigest string `json:"build_digest"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return "", err
+	}
+	if payload.BuildDigest == "" {
+		return "", errors.New("the fare engine reported no build digest")
+	}
+	return payload.BuildDigest, nil
+}

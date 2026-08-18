@@ -14,16 +14,31 @@ import (
 // passes came from that module's own default — which is the case a reader of
 // the configuration is least likely to notice.
 type configIndex struct {
-	root    configModule
-	modules map[string]moduleCall
+	root     configModule
+	modules  map[string]moduleCall
+	resolved map[string]json.RawMessage
 }
 
-func newConfigIndex(root configModule) *configIndex {
-	idx := &configIndex{root: root, modules: map[string]moduleCall{}}
+func newConfigIndex(root configModule, resolved map[string]planVariable) *configIndex {
+	idx := &configIndex{root: root, modules: map[string]moduleCall{}, resolved: map[string]json.RawMessage{}}
 	for name, call := range root.ModuleCalls {
 		idx.modules[name] = call
 	}
+	for name, v := range resolved {
+		idx.resolved[name] = v.Value
+	}
 	return idx
+}
+
+// visibility orders the origins from least visible to most. A module default is
+// the least visible thing in a configuration: nobody passes it, nobody writes
+// it in the file they are reviewing, and it decides the value anyway.
+var visibility = map[Origin]int{
+	OriginModuleDefault: 0,
+	OriginVariableFile:  1,
+	OriginRootDefault:   2,
+	OriginLiteral:       3,
+	OriginUnknown:       4,
 }
 
 // securityRelevant names the attributes whose origin the contract records.
@@ -113,7 +128,8 @@ func (idx *configIndex) resource(modulePath string, r planResource) (configResou
 	return configResource{}, call, false
 }
 
-// originOf resolves one expression to where its value came from.
+// originOf resolves one expression to where its value came from, recording
+// every variable that took part.
 func (idx *configIndex) originOf(raw json.RawMessage, modulePath string, call *moduleCall) Provenance {
 	if len(raw) == 0 {
 		return Provenance{Origin: OriginUnknown}
@@ -125,14 +141,14 @@ func (idx *configIndex) originOf(raw json.RawMessage, modulePath string, call *m
 	if len(expr.ConstantValue) > 0 {
 		return Provenance{Origin: OriginLiteral}
 	}
-	variable := ""
+	var contributors []Contribution
 	for _, ref := range expr.References {
-		if strings.HasPrefix(ref, "var.") {
-			variable = strings.TrimPrefix(ref, "var.")
-			break
+		if !strings.HasPrefix(ref, "var.") {
+			continue
 		}
+		contributors = append(contributors, idx.contributionOf(strings.TrimPrefix(ref, "var."), modulePath, call))
 	}
-	if variable == "" {
+	if len(contributors) == 0 {
 		if len(expr.References) > 0 {
 			// A reference to another resource's attribute: the value is
 			// decided elsewhere in the same configuration.
@@ -140,46 +156,85 @@ func (idx *configIndex) originOf(raw json.RawMessage, modulePath string, call *m
 		}
 		return Provenance{Origin: OriginUnknown}
 	}
-	reference := "var." + variable
+	primary := contributors[0]
+	for _, c := range contributors[1:] {
+		if visibility[c.Origin] < visibility[primary.Origin] {
+			primary = c
+		}
+	}
+	p := Provenance{Origin: primary.Origin, Reference: primary.Reference}
+	if len(contributors) > 1 {
+		p.Contributors = contributors
+	}
+	return p
+}
 
+// contributionOf resolves one variable reference to its origin.
+func (idx *configIndex) contributionOf(variable, modulePath string, call *moduleCall) Contribution {
+	reference := "var." + variable
 	if modulePath == "" || call == nil {
-		return Provenance{Origin: idx.rootOrigin(variable), Reference: reference}
+		return Contribution{Origin: idx.rootOrigin(variable), Reference: reference}
 	}
 	passed, ok := call.Expressions[variable]
 	if !ok {
 		// The caller never passes it, so the module's own default decided it.
-		return Provenance{Origin: OriginModuleDefault, Reference: reference}
+		return Contribution{Origin: OriginModuleDefault, Reference: reference}
 	}
 	var outer expression
 	if err := json.Unmarshal(passed, &outer); err != nil {
-		return Provenance{Origin: OriginUnknown, Reference: reference}
+		return Contribution{Origin: OriginUnknown, Reference: reference}
 	}
 	if len(outer.ConstantValue) > 0 {
-		return Provenance{Origin: OriginLiteral, Reference: reference}
+		return Contribution{Origin: OriginLiteral, Reference: reference}
 	}
 	for _, ref := range outer.References {
 		if strings.HasPrefix(ref, "var.") {
 			rootVar := strings.TrimPrefix(ref, "var.")
-			return Provenance{Origin: idx.rootOrigin(rootVar), Reference: ref}
+			return Contribution{Origin: idx.rootOrigin(rootVar), Reference: ref}
 		}
 	}
 	if len(outer.References) > 0 {
 		// The caller passed another resource's attribute: the value is decided
 		// inside the configuration itself.
-		return Provenance{Origin: OriginLiteral, Reference: outer.References[0]}
+		return Contribution{Origin: OriginLiteral, Reference: outer.References[0]}
 	}
-	return Provenance{Origin: OriginLiteral, Reference: reference}
+	return Contribution{Origin: OriginLiteral, Reference: reference}
 }
 
+// rootOrigin decides whether a root variable's value came from the variable
+// file the run was given or from the variable's own default.
+//
+// A variable with no default can only have come from the file. A variable with
+// a default came from the file when the value the run resolved is not the
+// default — which is exactly the case worth naming.
 func (idx *configIndex) rootOrigin(name string) Origin {
 	v, ok := idx.root.Variables[name]
 	if !ok {
 		return OriginUnknown
 	}
 	if v.Required || v.Default == nil {
-		// No default anywhere in the configuration, so the value was supplied
-		// by the variable file the run was given.
 		return OriginVariableFile
 	}
-	return OriginRootDefault
+	resolved, ok := idx.resolved[name]
+	if !ok {
+		return OriginRootDefault
+	}
+	def, err := json.Marshal(v.Default)
+	if err != nil {
+		return OriginRootDefault
+	}
+	if equalJSON(def, resolved) {
+		return OriginRootDefault
+	}
+	return OriginVariableFile
+}
+
+func equalJSON(a, b []byte) bool {
+	var av, bv any
+	if json.Unmarshal(a, &av) != nil || json.Unmarshal(b, &bv) != nil {
+		return false
+	}
+	x, err1 := json.Marshal(av)
+	y, err2 := json.Marshal(bv)
+	return err1 == nil && err2 == nil && string(x) == string(y)
 }

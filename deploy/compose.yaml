@@ -139,6 +139,9 @@ services:
     entrypoint: ["/usr/local/bin/pipeline"]
     environment:
       PLANLESS_TMPFS: "/artifacts,/plugins,/tmp"
+      # The default surface. It offers no misconfigured scenario, whatever the
+      # operator acknowledges.
+      PLANLESS_SURFACE: "secure"
     tmpfs:
       - /artifacts
       - /tmp
@@ -152,6 +155,33 @@ services:
     networks:
       corp:
         ipv4_address: 10.20.3.10
+
+  # INTENTIONALLY VULNERABLE — local educational material.
+  #
+  # This service exists only under a non-default profile, and even then it runs
+  # a misconfigured scenario only when the operator has explicitly acknowledged
+  # it. Either opt-in alone fails: the default pipeline offers no misconfigured
+  # scenario at all, and this one refuses without the acknowledgement.
+  vulnerable-pipeline:
+    <<: *hardened
+    profiles: ["vulnerable"]
+    image: planless-pipeline:dev
+    entrypoint: ["/usr/local/bin/pipeline"]
+    environment:
+      PLANLESS_TMPFS: "/artifacts,/plugins,/tmp"
+      PLANLESS_SURFACE: "vulnerable"
+      # Supplied by the operator, never by this file.
+      ALLOW_VULNERABLE_DEMO: "${ALLOW_VULNERABLE_DEMO:-}"
+    tmpfs:
+      - /artifacts
+      - /tmp
+      - /plugins:rw,exec
+    depends_on:
+      controlplane:
+        condition: service_healthy
+    networks:
+      corp:
+        ipv4_address: 10.20.3.11
 
   # The same runner with no network interface at all, which is how provider
   # installation is proved to need no network.

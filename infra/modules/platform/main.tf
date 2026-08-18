@@ -53,7 +53,7 @@ resource "democloud_workload" "fare_engine" {
   ports {
     name   = "admin"
     number = 8081
-    bind   = var.admin_bind
+    bind   = var.admin_profiles[var.admin_profile].bind
   }
 }
 
@@ -68,5 +68,5 @@ resource "democloud_network_rule" "fare_engine_admin" {
   id            = "rule-fare-engine-admin"
   workload      = democloud_workload.fare_engine.name
   port          = "admin"
-  source_ranges = var.admin_source_ranges
+  source_ranges = var.admin_profiles[var.admin_profile].source_ranges
 }

@@ -107,8 +107,26 @@ func TestProvenanceDistinguishesVariableFileFromModuleDefault(t *testing.T) {
 	if adminRule == nil {
 		t.Fatal("the admin ingress rule is missing from the graph")
 	}
-	if p := adminRule.Provenance["source_ranges"]; p.Origin != OriginModuleDefault || p.Reference != "var.admin_source_ranges" {
-		t.Fatalf("expected the operations range to come from a module default, got %+v", p)
+	// The addresses live in a module default; the caller only names a profile.
+	// Both contributors are recorded, and the least visible one is reported.
+	p := adminRule.Provenance["source_ranges"]
+	if p.Origin != OriginModuleDefault || p.Reference != "var.admin_profiles" {
+		t.Fatalf("expected the ingress ranges to come from a module default, got %+v", p)
+	}
+	if len(p.Contributors) != 2 {
+		t.Fatalf("expected both contributing variables to be recorded, got %+v", p.Contributors)
+	}
+	selector := false
+	for _, c := range p.Contributors {
+		if c.Reference == "var.admin_profile" {
+			selector = true
+			if c.Origin != OriginRootDefault {
+				t.Fatalf("the secure run should select the profile from the root default, got %s", c.Origin)
+			}
+		}
+	}
+	if !selector {
+		t.Fatal("the profile selector was not recorded as a contributor")
 	}
 
 	var workload *Resource
@@ -120,7 +138,7 @@ func TestProvenanceDistinguishesVariableFileFromModuleDefault(t *testing.T) {
 	if workload == nil {
 		t.Fatal("the workload is missing from the graph")
 	}
-	if p := workload.Provenance["ports.admin.bind"]; p.Origin != OriginModuleDefault || p.Reference != "var.admin_bind" {
+	if p := workload.Provenance["ports.admin.bind"]; p.Origin != OriginModuleDefault || p.Reference != "var.admin_profiles" {
 		t.Fatalf("expected the admin bind address to come from a module default, got %+v", p)
 	}
 	if len(workload.Ports) != 2 {

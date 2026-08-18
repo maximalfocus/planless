@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 
 	"github.com/maximalfocus/planless/internal/tofu"
 )
@@ -24,6 +23,12 @@ func main() {
 		emit(os.Args[2])
 	case len(os.Args) == 2 && os.Args[1] == "reconcile":
 		reconcile()
+	case len(os.Args) == 2 && os.Args[1] == "compare-builds":
+		if err := tofu.CompareBuilds(os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, "pipeline:", err)
+			os.Exit(1)
+		}
+		fmt.Println(`{"document":"planless.comparison","identical":true}`)
 	case len(os.Args) == 2 && os.Args[1] == "compare-observations":
 		if err := tofu.CompareObservations(os.Stdin); err != nil {
 			fmt.Fprintln(os.Stderr, "pipeline:", err)
@@ -34,7 +39,8 @@ func main() {
 		run(os.Args[1])
 	default:
 		fmt.Fprintf(os.Stderr,
-			"usage: pipeline <scenario>|reconcile|compare-observations\navailable scenarios: %s\n", available())
+			"usage: pipeline <scenario>|reconcile|compare-observations|compare-builds\n"+
+				"available scenarios: %s\n", available())
 		os.Exit(64)
 	}
 }
@@ -97,6 +103,9 @@ func emit(name string) {
 
 func config() tofu.Config {
 	return tofu.Config{
+		Surface:         env("PLANLESS_SURFACE", tofu.SurfaceSecure),
+		Acknowledgement: os.Getenv("ALLOW_VULNERABLE_DEMO"),
+
 		Tofu:         env("PLANLESS_TOFU", "/usr/local/bin/tofu"),
 		InfraDir:     env("PLANLESS_INFRA", "/infra"),
 		WorkDir:      env("PLANLESS_WORK", "/artifacts/work"),
@@ -111,13 +120,11 @@ func config() tofu.Config {
 	}
 }
 
+// available lists only what may be started here. A scenario that needs both
+// opt-ins is not offered until both are present.
 func available() string {
-	names := make([]string, 0, len(tofu.Scenarios))
-	for k := range tofu.Scenarios {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return fmt.Sprint(names)
+	cfg := config()
+	return fmt.Sprint(tofu.AvailableScenarios(cfg.Surface, cfg.Acknowledgement))
 }
 
 func env(key, fallback string) string {

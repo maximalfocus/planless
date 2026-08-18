@@ -7,9 +7,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,6 +31,29 @@ type engine struct {
 	mu      sync.Mutex
 	fareCap int
 	log     *slog.Logger
+
+	// build is the digest of this executable. The application is identical in
+	// every variant of the demonstration, and reporting its own build is how
+	// that stops being something you have to take on trust.
+	build string
+}
+
+// selfDigest returns the digest of the running executable.
+func selfDigest() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	sum := sha256.New()
+	if _, err := io.Copy(sum, f); err != nil {
+		return ""
+	}
+	return "sha256:" + hex.EncodeToString(sum.Sum(nil))
 }
 
 func main() {
@@ -44,7 +70,7 @@ func main() {
 		log.Error("fare-engine.exit", "error", "PLANLESS_BIND is required")
 		os.Exit(1)
 	}
-	e := &engine{fareCap: defaultFareCap, log: log}
+	e := &engine{fareCap: defaultFareCap, log: log, build: selfDigest()}
 
 	service := &http.Server{
 		Addr:              bind + ":8080",
@@ -81,6 +107,7 @@ func (e *engine) serviceHandler() http.Handler {
 		e.mu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"operator":       "Halloway Transit Authority",
+			"build_digest":   e.build,
 			"fare_cap_minor": capMinor,
 			"routes": []map[string]any{
 				{"route": "orbital-loop", "fare_minor": 340},
@@ -103,6 +130,7 @@ func (e *engine) adminHandler() http.Handler {
 		e.mu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"surface":        "admin",
+			"build_digest":   e.build,
 			"fare_cap_minor": capMinor,
 			"caller":         r.Header.Get("X-Democloud-Caller-Principal"),
 			"segment":        r.Header.Get("X-Democloud-Caller-Segment"),

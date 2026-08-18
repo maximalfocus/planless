@@ -38,3 +38,9 @@ variable "log_retention_days" {
   default     = 30
   description = "How long bucket access logs are kept."
 }
+
+variable "admin_profile" {
+  type        = string
+  default     = "operations-range"
+  description = "Which of the module's admin exposure profiles applies."
+}
