@@ -139,7 +139,7 @@ REFUSED
 	step "fresh platform: every vulnerable run starts from empty state"
 	down
 	up
-	$COMPOSE_ALL up -d --no-recreate vulnerable-pipeline
+	$COMPOSE_ALL up -d vulnerable-pipeline
 
 	step "the intended posture, applied through the gate"
 	scenario secure-apply >/dev/null
@@ -171,6 +171,23 @@ REFUSED
 	step "a control that reads the right artifact and is not obeyed"
 	vulnerable_scenario half-fix-report-only >/dev/null
 	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-reach
+	restore
+
+	step "a gate that stands on the review path, and a second path that does not go through it"
+	vulnerable_scenario half-fix-review-path-only >/dev/null
+	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-reach
+	restore
+
+	step "a compliant apply, and a change made directly at the control plane afterwards"
+	vulnerable_scenario half-fix-drift >/dev/null
+	$COMPOSE exec -T outside /usr/local/bin/client internet-drifted-export
+
+	# Re-applying the configuration does not close this one: the exposure is a
+	# resource no configuration describes. Somebody has to act on what the
+	# drift check reported.
+	step "the fix for drift: an operator removes what the check reported"
+	$COMPOSE exec -T pipeline /usr/local/bin/pipeline remove-drift
+	$COMPOSE exec -T pipeline /usr/local/bin/pipeline drift >/dev/null
 	restore
 
 	step "the application build is identical in both variants"
@@ -234,13 +251,15 @@ up() {
 	step "start the platform and the containers the run exercises"
 	$COMPOSE up -d --wait controlplane fare-engine
 	# The clients, the harness and the Go gate stay up for the whole run, so a
-	# step costs an exec rather than a container.
-	$COMPOSE up -d --no-recreate outside finance ops verifier pipeline tests
+	# step costs an exec rather than a container. They are recreated whenever
+	# the image changed, so a run never execs into stale code.
+	$COMPOSE up -d outside finance ops verifier pipeline tests
 }
 
 down() {
 	step "tear down"
-	$COMPOSE down -v --remove-orphans
+	# Every profile, so nothing from the vulnerable surface is left behind.
+	$COMPOSE_ALL down -v --remove-orphans
 }
 
 selfchecks() {
@@ -265,6 +284,9 @@ checks() {
 
 	step "the applied platform state equals the checked-in fixture, byte for byte"
 	$COMPOSE exec -T verifier /usr/local/bin/client state-matches-fixture
+
+	step "the drift check finds nothing against a compliant platform"
+	$COMPOSE exec -T pipeline /usr/local/bin/pipeline drift >/dev/null
 
 	step "the one enumerated admin transition, from the operations range"
 	$COMPOSE exec -T ops /usr/local/bin/client ops-admin-change

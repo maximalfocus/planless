@@ -294,6 +294,17 @@ func (t *Transcript) finish(cfg Config, scenario Scenario, planPath string) (*Tr
 		t.Enforcement.Applied = true
 		t.Enforcement.OperatorResult = ResultDeployed
 	}
+
+	// The gate refused on the review path, and a second path applies the change
+	// regardless. The operator-facing result stays a refusal, because on the
+	// path the operator used it was one — and nothing records what landed.
+	if refused && scenario.OutOfBand {
+		if err := t.run(cfg, "apply", "-input=false", "-no-color", "-lock=false", "plan.tfplan"); err != nil {
+			return t, err
+		}
+		t.Enforcement.Applied = true
+		t.Enforcement.OutOfBand = true
+	}
 	if !refused && scenario.SkipApply {
 		t.Enforcement.OperatorResult = ResultDeployed
 	}
@@ -311,6 +322,29 @@ func (t *Transcript) finish(cfg Config, scenario Scenario, planPath string) (*Tr
 		}
 	}
 
+	// One enumerated change made directly at the control plane, after a
+	// compliant apply. The repository is still correct. The approved plan is
+	// still correct. Nothing re-evaluates the world, so the drift check is the
+	// only thing that can notice.
+	if scenario.DriftMutation && t.Enforcement.Applied {
+		if err := applyDriftMutation(cfg.StateAPI); err != nil {
+			return t, err
+		}
+		after, err := stateDigest(cfg.StateAPI)
+		if err != nil {
+			return t, err
+		}
+		t.StateAfter = after
+		report, err := Drift(cfg, scenario.AllowlistOf())
+		if err != nil {
+			return t, err
+		}
+		if scenario.Vulnerable {
+			report.Warning = VulnerableWarning
+		}
+		t.Drift = report
+	}
+
 	t.Passed = t.assert(scenario)
 	if !t.Passed {
 		return t, fmt.Errorf("scenario %s did not meet its declared outcome", scenario.ID)
@@ -322,9 +356,24 @@ func (t *Transcript) finish(cfg Config, scenario Scenario, planPath string) (*Tr
 // have changed nothing at all.
 func (t *Transcript) assert(scenario Scenario) bool {
 	switch scenario.Expect {
+	case ExpectAppliedOutOfBand:
+		// The gate refused, exactly one audit event says so, the operator saw
+		// the same generic refusal as always — and the change landed.
+		return t.Enforcement.OutOfBand && t.Enforcement.Applied &&
+			t.Enforcement.OperatorResult == ResultRefused &&
+			len(t.Audit) == 1 &&
+			t.Decision != nil && t.Decision.Denied()
 	case ExpectApplied:
 		if t.Enforcement.OperatorResult != ResultDeployed {
 			return false
+		}
+		if scenario.DriftMutation {
+			// The gate admitted, so the artifact and the applied state were
+			// compliant. Only the drift check saw what happened next, and it
+			// changed nothing.
+			return t.Decision != nil && !t.Decision.Denied() &&
+				t.Drift != nil && t.Drift.DriftDetected && !t.Drift.Remediated &&
+				t.Artifacts.AppliedState != t.StateAfter
 		}
 		if scenario.Scan {
 			// The scan must have run, found nothing, and been wrong about

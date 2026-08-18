@@ -82,6 +82,7 @@ type report struct {
 var vulnerableChecks = map[string]bool{
 	"internet-vulnerable-impact": true,
 	"internet-vulnerable-reach":  true,
+	"internet-drifted-export":    true,
 }
 
 var checks = map[string]func() []step{
@@ -94,6 +95,7 @@ var checks = map[string]func() []step{
 	"ledger-records-one-change":  ledgerRecordsOneChange,
 	"internet-vulnerable-impact": internetVulnerableImpact,
 	"internet-vulnerable-reach":  internetVulnerableReach,
+	"internet-drifted-export":    internetDriftedExport,
 	"corp-legitimate-paths":      corpLegitimatePaths,
 	"vulnerable-ledger":          vulnerableLedger,
 }
@@ -300,6 +302,21 @@ func internetVulnerableReach() []step {
 			"an anonymous client on the public segment retrieves the refund export, byte for byte"),
 		expectStatus(outsideRole, http.MethodGet, pathAdminStatus, http.StatusOK,
 			"the fare engine admin port answers the public segment"),
+	}
+}
+
+// internetDriftedExport observes the consequence of a change made directly at
+// the control plane: the repository still describes a private export, and an
+// anonymous client on the public segment reads it anyway.
+//
+// INTENTIONALLY VULNERABLE — local educational material.
+func internetDriftedExport() []step {
+	return []step{
+		expectStatusAndBody(outsideRole, http.MethodGet, pathRefundExport, http.StatusOK,
+			canon.Digest(fixtures.RefundsCSV()),
+			"the refund export is readable from the public segment, though no configuration says so"),
+		expectStatus(outsideRole, http.MethodGet, pathAdminStatus, http.StatusForbidden,
+			"the admin port is still closed: only the one drifted resource is exposed"),
 	}
 }
 

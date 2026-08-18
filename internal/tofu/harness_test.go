@@ -217,7 +217,9 @@ func TestScenarioTableIsWellFormed(t *testing.T) {
 		if s.ID != name {
 			t.Fatalf("scenario %q declares id %q", name, s.ID)
 		}
-		if s.Expect != ExpectApplied && s.Expect != ExpectRefused {
+		switch s.Expect {
+		case ExpectApplied, ExpectRefused, ExpectAppliedOutOfBand:
+		default:
 			t.Fatalf("scenario %s declares no expected outcome", name)
 		}
 		if s.VarFile == "" {
@@ -345,12 +347,15 @@ func TestVulnerableRunsAreLabelled(t *testing.T) {
 	if VulnerableWarning == "" {
 		t.Fatal("there is no label")
 	}
+	// A scenario marked vulnerable must say how it becomes dangerous: either it
+	// reads the misconfigured value set, or it changes the platform directly.
 	for name, s := range Scenarios {
 		if !s.Vulnerable {
 			continue
 		}
-		if s.VarFile != "vulnerable.tfvars" {
-			t.Fatalf("scenario %s is marked vulnerable but reads %s", name, s.VarFile)
+		if s.VarFile != "vulnerable.tfvars" && !s.DriftMutation {
+			t.Fatalf("scenario %s is marked vulnerable but neither reads the misconfigured value set "+
+				"nor changes the platform directly", name)
 		}
 	}
 	// A run that lands an exposure must declare that its reconciliation fails.
@@ -483,5 +488,71 @@ func TestEveryRunGetsAnEmptyWorkingTree(t *testing.T) {
 	}
 	if err := prepare(first); err == nil {
 		t.Fatal("a run that inherited a working tree should refuse to start")
+	}
+}
+
+// A gate is worth exactly the paths it stands on. The out-of-band shape is only
+// demonstrating something if the gate genuinely refused and the change genuinely
+// landed.
+func TestOutOfBandShapeRequiresARefusalAndAnApply(t *testing.T) {
+	scenario := Scenarios["half-fix-review-path-only"]
+	if scenario.Expect != ExpectAppliedOutOfBand {
+		t.Fatalf("unexpected expectation %s", scenario.Expect)
+	}
+	tr := &Transcript{Scenario: scenario.ID, Expected: scenario.Expect}
+	tr.refuse(StagePolicy, "exposure_not_allowlisted", "deny-by-default")
+	tr.Decision = &gate.Decision{Result: gate.ResultDeny, Violations: []gate.Violation{{Class: "x"}}}
+	if tr.assert(scenario) {
+		t.Fatal("a refusal that changed nothing is not this shape")
+	}
+	tr.Enforcement.Applied = true
+	tr.Enforcement.OutOfBand = true
+	if !tr.assert(scenario) {
+		t.Fatal("a refusal followed by an out-of-band apply should pass")
+	}
+	// The operator must still have been told the same generic refusal.
+	if tr.Enforcement.OperatorResult != ResultRefused {
+		t.Fatalf("the operator saw %s", tr.Enforcement.OperatorResult)
+	}
+	if len(tr.Audit) != 1 {
+		t.Fatalf("expected exactly one audit event, got %d", len(tr.Audit))
+	}
+	tr.Decision.Result = gate.ResultAdmit
+	if tr.assert(scenario) {
+		t.Fatal("an out-of-band apply the gate would have admitted demonstrates nothing")
+	}
+}
+
+// The drift shape needs a compliant apply, a live state that then diverged from
+// it, and a check that changed nothing.
+func TestDriftShapeRequiresACompliantApplyAndAnUnrepairedDivergence(t *testing.T) {
+	scenario := Scenarios["half-fix-drift"]
+	if scenario.VarFile != "secure.tfvars" {
+		t.Fatalf("the drift shape must run the compliant configuration, got %s", scenario.VarFile)
+	}
+	tr := &Transcript{Scenario: scenario.ID, Expected: ExpectApplied}
+	tr.Enforcement.OperatorResult = ResultDeployed
+	tr.Decision = &gate.Decision{Result: gate.ResultAdmit}
+	tr.Artifacts.AppliedState = "sha256:compliant"
+	tr.StateAfter = "sha256:compliant"
+	if tr.assert(scenario) {
+		t.Fatal("a drift shape with no drift report must not pass")
+	}
+	tr.Drift = &DriftReport{DriftDetected: true}
+	if tr.assert(scenario) {
+		t.Fatal("a drift shape whose live state never diverged must not pass")
+	}
+	tr.StateAfter = "sha256:diverged"
+	if !tr.assert(scenario) {
+		t.Fatal("a compliant apply followed by a detected divergence should pass")
+	}
+	tr.Drift.Remediated = true
+	if tr.assert(scenario) {
+		t.Fatal("a drift check that repaired what it found is not this control")
+	}
+	tr.Drift.Remediated = false
+	tr.Decision.Result = gate.ResultDeny
+	if tr.assert(scenario) {
+		t.Fatal("a drift shape whose apply was not compliant demonstrates nothing")
 	}
 }

@@ -7,6 +7,10 @@ import "sort"
 const (
 	ExpectApplied = "applied"
 	ExpectRefused = "refused"
+
+	// ExpectAppliedOutOfBand is the shape where the gate refused and the change
+	// landed anyway. The operator was told one thing; the platform did another.
+	ExpectAppliedOutOfBand = "applied-out-of-band"
 )
 
 // Binding rehearsals: the ways a plan artifact can fail to be the one the gate
@@ -68,6 +72,15 @@ type Scenario struct {
 	// Advisory runs the deployment gate and then does not obey it. A finding
 	// without authority is a log line.
 	Advisory bool
+
+	// OutOfBand applies the plan through a second path after the gate refused
+	// it on the review path. A gate is worth exactly the paths it stands on.
+	OutOfBand bool
+
+	// DriftMutation changes one live resource directly at the control plane
+	// after a compliant apply, so the repository stays correct while the world
+	// does not.
+	DriftMutation bool
 
 	// Vulnerable marks a run that applies, or evaluates, a deliberately
 	// misconfigured value set. Such a run needs both opt-ins and everything it
@@ -212,6 +225,26 @@ var Scenarios = map[string]Scenario{
 		VarFile:              "vulnerable.tfvars",
 		Gated:                true,
 		Advisory:             true,
+		Vulnerable:           true,
+		Expect:               ExpectApplied,
+		ExpectReconciliation: VerdictFail,
+	},
+	"half-fix-review-path-only": {
+		ID:                   "half-fix-review-path-only",
+		Description:          "the gate blocks on the review path and the change reaches the platform by another",
+		VarFile:              "vulnerable.tfvars",
+		Gated:                true,
+		OutOfBand:            true,
+		Vulnerable:           true,
+		Expect:               ExpectAppliedOutOfBand,
+		ExpectReconciliation: VerdictFail,
+	},
+	"half-fix-drift": {
+		ID:                   "half-fix-drift",
+		Description:          "a compliant state, changed directly at the control plane afterwards",
+		VarFile:              "secure.tfvars",
+		Gated:                true,
+		DriftMutation:        true,
 		Vulnerable:           true,
 		Expect:               ExpectApplied,
 		ExpectReconciliation: VerdictFail,

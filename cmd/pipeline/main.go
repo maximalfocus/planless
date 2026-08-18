@@ -30,6 +30,16 @@ func main() {
 		// policy fixtures can be regenerated from a real plan rather than
 		// written by hand.
 		emit(os.Args[2])
+	case len(os.Args) == 2 && os.Args[1] == "drift":
+		drift()
+	case len(os.Args) == 2 && os.Args[1] == "remove-drift":
+		// An operator acting on what the drift check reported. The check itself
+		// never does this.
+		if err := tofu.RemoveDriftedGrant(config().StateAPI); err != nil {
+			fmt.Fprintln(os.Stderr, "pipeline:", err)
+			os.Exit(1)
+		}
+		fmt.Println(`{"document":"planless.drift-removal","removed":true}`)
 	case len(os.Args) == 2 && os.Args[1] == "reconcile":
 		reconcile()
 	case len(os.Args) == 2 && os.Args[1] == "compare-builds":
@@ -48,7 +58,7 @@ func main() {
 		run(os.Args[1])
 	default:
 		fmt.Fprintf(os.Stderr,
-			"usage: pipeline <scenario>|reconcile|compare-observations|compare-builds\n"+
+			"usage: pipeline <scenario>|reconcile|drift|remove-drift|compare-observations|compare-builds\n"+
 				"available scenarios: %s\n", available())
 		os.Exit(64)
 	}
@@ -67,6 +77,27 @@ func run(name string) {
 	emitTranscript(transcript)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "pipeline:", err)
+		os.Exit(1)
+	}
+}
+
+// drift reports what is actually reachable on the platform right now, whatever
+// any repository says. It exits non-zero when it finds something, because a
+// detector that reports success on detection is not a detector.
+func drift() {
+	report, err := tofu.Drift(config(), "")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "pipeline:", err)
+		os.Exit(2)
+	}
+	out, err := json.Marshal(report)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "pipeline:", err)
+		os.Exit(2)
+	}
+	fmt.Println(string(out))
+	fmt.Fprintln(os.Stderr, report.Render())
+	if report.DriftDetected {
 		os.Exit(1)
 	}
 }
