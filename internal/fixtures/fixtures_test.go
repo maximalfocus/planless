@@ -14,7 +14,7 @@ import (
 // byte-identical platform state, and any change to a fixture has to be a
 // deliberate edit here rather than an accident.
 const (
-	SecureBaselineDigest = "sha256:8e5a3ce7912039e6559bf1bbeb2395d84d4023390b70247c82f6874307346114"
+	SecureBaselineDigest = "sha256:34dd2a2854bb484370d5b10050f19c2c211a7891fb2d06e7b3654634156c9d72"
 	RefundsDigest        = "sha256:ec93c341749acf6d1b134f2baa23c9b0d72a9a99cf9c4e7b33ab98927890e1b0"
 	StatusDigest         = "sha256:b827350682ee1f1ad1391b236f159e0bfe6b605f2f0783936a7adb18e7163061"
 )

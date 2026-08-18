@@ -54,9 +54,40 @@ func (s *Store) State() State {
 	return cloneState(s.state)
 }
 
-// Digest returns the canonical digest of platform state.
+// resourceView is platform state without its change ledger: what the platform
+// is configured to be, rather than what has happened to it.
+type resourceView struct {
+	Segments     []Segment     `json:"segments"`
+	Principals   []Principal   `json:"principals"`
+	Buckets      []Bucket      `json:"buckets"`
+	Objects      []Object      `json:"objects"`
+	Grants       []Grant       `json:"grants"`
+	Workloads    []Workload    `json:"workloads"`
+	NetworkRules []NetworkRule `json:"network_rules"`
+}
+
+// Digest returns the canonical digest of the platform's configured state.
+//
+// The change ledger is deliberately outside this digest. Two things the
+// demonstration must be able to say apart: "the declared infrastructure is
+// identical" and "nothing has happened". A platform whose configuration is
+// unchanged while its world has moved is exactly the shape of drift.
 func (s *Store) Digest() (string, error) {
-	return canon.DigestOf(s.State())
+	st := s.State()
+	return canon.DigestOf(resourceView{
+		Segments:     st.Segments,
+		Principals:   st.Principals,
+		Buckets:      st.Buckets,
+		Objects:      st.Objects,
+		Grants:       st.Grants,
+		Workloads:    st.Workloads,
+		NetworkRules: st.NetworkRules,
+	})
+}
+
+// LedgerDigest returns the canonical digest of the change ledger.
+func (s *Store) LedgerDigest() (string, error) {
+	return canon.DigestOf(s.State().Ledger)
 }
 
 // Segment classifies a source address into a network segment. An address in no

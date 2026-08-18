@@ -1,0 +1,14 @@
+# Provider installation is served entirely from a local filesystem mirror, and
+# every other installation method is excluded. There is no path by which
+# initialization can reach the network.
+
+provider_installation {
+  filesystem_mirror {
+    path    = "/opt/tofu-mirror"
+    include = ["democloud.example/*/*"]
+  }
+
+  direct {
+    exclude = ["*/*/*"]
+  }
+}

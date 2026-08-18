@@ -122,7 +122,12 @@ func (s *Server) getStateDigest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"result": "state_digest_failed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"digest": digest})
+	ledger, err := s.store.LedgerDigest()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"result": "state_digest_failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"digest": digest, "ledger_digest": ledger})
 }
 
 func (s *Server) getObject(w http.ResponseWriter, r *http.Request) {

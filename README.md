@@ -8,9 +8,9 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** this is the first delivery slice. It builds the fictional platform, its permission model
-> and its two-segment network — the foundation every later claim rests on. There is no IaC toolchain,
-> no policy gate and no misconfigured variant in the repository yet.
+> **Status:** two delivery slices are in. The fictional platform and its two-segment network are
+> built, and a real infrastructure-as-code toolchain now plans and applies the checked-in
+> configuration to it. There is no policy gate and no misconfigured variant in the repository yet.
 
 ## What this slice establishes
 
@@ -30,6 +30,40 @@ observation. So the first thing built is the thing that makes it observable:
 
 `democloud` is not an emulator of any real cloud provider, and no claim is made here about how any real
 provider, IaC tool, policy engine or scanner behaves.
+
+## The four artifacts
+
+The demonstration will eventually turn on a gate that read the wrong thing. So the pipeline keeps four
+artifacts apart from the very beginning, each with its own digest:
+
+| Artifact | What it is |
+|---|---|
+| source configuration | the `.tf` files as written |
+| resolved desired state | the machine-readable plan: every variable, value and module default already applied |
+| artifact the policy evaluated | in this slice, **nothing evaluates anything**, and the transcript says so |
+| applied state | what the platform actually holds afterwards |
+
+Read `infra/` and you will not find out who may read the refund export, or from where. The grant's
+principals and source ranges resolve from `infra/secure.tfvars`; the fare engine's ingress ranges and
+bind addresses resolve from defaults inside `infra/modules/platform`. They exist only in the resolved
+plan. A test asserts exactly that, in both directions: no security-relevant value appears in any
+resource block, and every one of them appears in the resolved artifact.
+
+The resolved-desired-state digest is deterministic: the same configuration and values always produce
+the same artifact. The binary plan file's digest is not, because the toolchain's plan format carries
+run-specific data — which is what makes it a good per-run identity for binding an approved artifact to
+an applied one, and a bad thing to compare across runs. The transcript reports both, labelled.
+
+## The toolchain
+
+**OpenTofu**, pinned by checksum and fetched once at image build time, with a `democloud` provider
+built from source in this repository and installed through a **local filesystem mirror**. Every other
+installation method is excluded, so initialization needs no network at all — and that is proved by
+running it in a container with `network_mode: none`, which has no network interface whatsoever.
+
+The provider has no configurable attributes. There is no endpoint, host, region, account, project,
+credential or token to set: it talks to one in-network service named by a compile-time constant. Its
+resource surface is exactly five types, and it offers no data sources at all.
 
 ## The fixtures
 
@@ -67,8 +101,12 @@ Other commands: `./scripts/demo.sh up`, `checks`, `state`, `down`.
 | `internet-secure-baseline` | `internet` | the status page is readable; the refund export, the admin port and the service port are all refused |
 | `finance-corp-read` | `corp` | the finance principal reads the export; an anonymous corporate caller does not; the admin port refuses a caller outside the operations range |
 | `ops-admin-read` | `corp`, `10.20.7.0/24` | the admin port answers inside the operations range, and that range carries no grant on the export |
-| `state-matches-fixture` | `corp` | live platform state, read through the control plane's own read-only API, digests identically to the checked-in fixture |
+| `state-matches-fixture` | `corp` | the state a real apply produced, read through the control plane's own read-only API, digests identically to the checked-in fixture |
 | `ops-admin-change` / `ledger-records-one-change` | `corp` | the one enumerated, documented, non-destructive admin transition is recorded as exactly one ledger row attributed to its caller and segment |
+
+The configured-state digest deliberately excludes the change ledger. After the admin transition the
+platform's configuration digest is **unchanged** while its ledger has moved — a world that has drifted
+from the infrastructure that describes it. That distinction is load-bearing later.
 
 Every claim about platform state is made through the control plane's read-only API or through a probe's
 observed result, and compared by canonical digest. Nothing inspects a container's filesystem, database

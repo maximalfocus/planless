@@ -35,7 +35,9 @@ services:
     environment:
       PLANLESS_CORP_ADDR: "10.20.1.10:8080"
       PLANLESS_EDGE_ADDR: "198.51.100.10:9000"
-      PLANLESS_SEED: "secure-baseline"
+      # The platform starts with its segments, principals and the deployer's
+      # scope, and no infrastructure at all: the pipeline creates everything.
+      PLANLESS_SEED: "bootstrap"
       PLANLESS_SCENARIO: "secure-baseline"
       PLANLESS_TMPFS: "/state"
     tmpfs:
@@ -124,6 +126,48 @@ services:
       corp:
         ipv4_address: 10.20.5.31
 
+  # The pipeline runner: the real infrastructure toolchain, on the corporate
+  # segment, applying the checked-in configuration to the control plane.
+  pipeline:
+    <<: *hardened
+    profiles: ["checks"]
+    image: planless-pipeline:dev
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: pipeline
+    entrypoint: ["/usr/local/bin/pipeline"]
+    environment:
+      PLANLESS_TMPFS: "/artifacts,/plugins,/tmp"
+    tmpfs:
+      - /artifacts
+      - /tmp
+      # The toolchain installs the provider plugin into its data directory and
+      # then executes it, so this mount alone is exec-capable. Plan artifacts,
+      # the working tree and the plugin socket stay on mounts that are not.
+      - /plugins:rw,exec
+    depends_on:
+      controlplane:
+        condition: service_healthy
+    networks:
+      corp:
+        ipv4_address: 10.20.3.10
+
+  # The same runner with no network interface at all, which is how provider
+  # installation is proved to need no network.
+  pipeline-offline:
+    <<: *hardened
+    profiles: ["checks"]
+    image: planless-pipeline:dev
+    entrypoint: ["/usr/local/bin/pipeline"]
+    network_mode: "none"
+    environment:
+      PLANLESS_TMPFS: "/artifacts,/plugins,/tmp"
+    tmpfs:
+      - /artifacts
+      - /tmp
+      - /plugins:rw,exec
+
   # The Go gate: tests, vet and formatting, plus the static containment check
   # over this file, all through the same container boundary as everything else.
   tests:
@@ -139,8 +183,8 @@ services:
       GOFLAGS: "-trimpath"
       GOTOOLCHAIN: "local"
       GOCACHE: "/tmp/gocache"
-      GOMODCACHE: "/tmp/gomodcache"
-      GOPATH: "/tmp/gopath"
+      # The module cache is baked into the image at build time and read from a
+      # read-only layer at run time: the gate needs no network either.
       HOME: "/tmp"
       CGO_ENABLED: "0"
       PLANLESS_TMPFS: "/tmp"

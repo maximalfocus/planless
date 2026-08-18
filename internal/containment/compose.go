@@ -157,7 +157,9 @@ func checkNetworks(cfg config) []Finding {
 				Detail:  "attached to both segments",
 			})
 		}
-		if len(s.Networks) == 0 {
+		// `network_mode: none` is stricter than any segment attachment: the
+		// container has no network interface at all.
+		if len(s.Networks) == 0 && s.NetworkMode != "none" {
 			findings = append(findings, Finding{Service: name, Rule: "service_is_on_a_declared_segment", Detail: "no segment attachment"})
 		}
 	}
