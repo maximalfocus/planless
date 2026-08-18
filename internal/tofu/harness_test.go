@@ -448,3 +448,40 @@ func TestAdvisoryScenarioRequiresRealFindingsAndAnApply(t *testing.T) {
 		t.Fatal("an advisory scenario where the gate admitted demonstrates nothing")
 	}
 }
+
+// The harness container is long-lived; a run is not. Every run gets its own
+// working tree and its own toolchain data directory, and both are empty when it
+// begins — a run that inherited a previous one's tree would silently plan
+// something other than what it was asked to.
+func TestEveryRunGetsAnEmptyWorkingTree(t *testing.T) {
+	base := Config{WorkRoot: t.TempDir(), DataRoot: t.TempDir()}
+
+	first, err := newRun(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := newRun(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.WorkDir == second.WorkDir || first.DataDir == second.DataDir {
+		t.Fatalf("two runs shared a directory: %s / %s", first.WorkDir, second.WorkDir)
+	}
+	for _, dir := range []string{first.WorkDir, second.WorkDir, first.DataDir, second.DataDir} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("%s is not empty at the start of a run", dir)
+		}
+	}
+
+	// The emptiness is asserted, not assumed.
+	if err := os.WriteFile(filepath.Join(first.WorkDir, "left-over.tf"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepare(first); err == nil {
+		t.Fatal("a run that inherited a working tree should refuse to start")
+	}
+}

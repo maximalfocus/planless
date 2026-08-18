@@ -43,7 +43,7 @@ build() {
 
 go_gate() {
 	step "go test, go vet and formatting"
-	$COMPOSE run --rm -T tests sh -c '
+	$COMPOSE exec -T tests sh -c '
 		set -e
 		unformatted="$(gofmt -l .)"
 		if [ -n "$unformatted" ]; then
@@ -61,7 +61,7 @@ go_gate() {
 
 policy_gate() {
 	step "the deployment gate decides every checked-in plan artifact"
-	$COMPOSE run --rm -T --entrypoint /usr/local/bin/gate pipeline-offline verify-fixtures
+	$COMPOSE exec -T pipeline /usr/local/bin/gate verify-fixtures
 }
 
 offline_init() {
@@ -74,17 +74,17 @@ offline_init() {
 # inside a container; this function only orders the steps.
 scenario() {
 	step "scenario: $1" >&2
-	transcript="$($COMPOSE run --rm -T pipeline "$1")"
+	transcript="$($COMPOSE exec -T pipeline /usr/local/bin/pipeline "$1")"
 	# Both segments report at once: neither observation depends on the other.
 	work="$(mktemp -d)"
-	$COMPOSE run --rm -T outside observe >"$work/internet" &
+	$COMPOSE exec -T outside /usr/local/bin/client observe >"$work/internet" &
 	internet_probe=$!
-	$COMPOSE run --rm -T finance observe >"$work/corp" &
+	$COMPOSE exec -T finance /usr/local/bin/client observe >"$work/corp" &
 	corp_probe=$!
 	wait "$internet_probe"
 	wait "$corp_probe"
 	printf '%s\n' "$transcript" | cat - "$work/internet" "$work/corp" |
-		$COMPOSE run --rm -T pipeline reconcile >/dev/null
+		$COMPOSE exec -T pipeline /usr/local/bin/pipeline reconcile >/dev/null
 	rm -rf "$work"
 	printf '%s\n' "$transcript"
 }
@@ -98,18 +98,18 @@ apply() {
 legitimate() {
 	step "a reviewed exposure change, against the allowlist that does not name it"
 	scenario reviewed-exposure-unapproved
-	$COMPOSE run --rm -T outside internet-secure-baseline
+	$COMPOSE exec -T outside /usr/local/bin/client internet-secure-baseline
 
 	step "an ordinary non-security change must alter nothing about reachability"
-	before="$($COMPOSE run --rm -T outside observe)"
+	before="$($COMPOSE exec -T outside /usr/local/bin/client observe)"
 	scenario routine-change
-	after="$($COMPOSE run --rm -T outside observe)"
+	after="$($COMPOSE exec -T outside /usr/local/bin/client observe)"
 	printf '%s\n%s\n' "$before" "$after" |
-		$COMPOSE run --rm -T pipeline compare-observations
+		$COMPOSE exec -T pipeline /usr/local/bin/pipeline compare-observations
 
 	step "the same exposure change, against a reviewed allowlist that names it"
 	scenario reviewed-exposure
-	$COMPOSE run --rm -T outside internet-reviewed-exposure
+	$COMPOSE exec -T outside /usr/local/bin/client internet-reviewed-exposure
 }
 
 # INTENTIONALLY VULNERABLE — local educational material.
@@ -139,42 +139,43 @@ REFUSED
 	step "fresh platform: every vulnerable run starts from empty state"
 	down
 	up
+	$COMPOSE_ALL up -d --no-recreate vulnerable-pipeline
 
 	step "the intended posture, applied through the gate"
 	scenario secure-apply >/dev/null
-	$COMPOSE run --rm -T outside internet-secure-baseline
+	$COMPOSE exec -T outside /usr/local/bin/client internet-secure-baseline
 
 	step "the misconfigured value set, with the gate standing on the path"
 	vulnerable_scenario vulnerable-gated >/dev/null
-	$COMPOSE run --rm -T outside internet-secure-baseline
+	$COMPOSE exec -T outside /usr/local/bin/client internet-secure-baseline
 
 	step "the same value set, applied by a path no gate stands on"
 	vulnerable_scenario vulnerable-ungated >"$VULNERABLE_TRANSCRIPT"
 
 	step "what the public segment can now reach"
-	$COMPOSE run --rm -T outside internet-vulnerable-impact
+	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-impact
 
 	step "the platform recorded the anonymous transition"
-	$COMPOSE run --rm -T verifier vulnerable-ledger
+	$COMPOSE exec -T verifier /usr/local/bin/client vulnerable-ledger
 
 	step "every legitimate corporate path is unaffected"
-	$COMPOSE run --rm -T finance corp-legitimate-paths
+	$COMPOSE exec -T finance /usr/local/bin/client corp-legitimate-paths
 
 	restore
 
 	step "a control that runs honestly and reads the wrong artifact"
 	vulnerable_scenario half-fix-source-scan >/dev/null
-	$COMPOSE run --rm -T outside internet-vulnerable-reach
+	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-reach
 	restore
 
 	step "a control that reads the right artifact and is not obeyed"
 	vulnerable_scenario half-fix-report-only >/dev/null
-	$COMPOSE run --rm -T outside internet-vulnerable-reach
+	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-reach
 	restore
 
 	step "the application build is identical in both variants"
 	cat "$VULNERABLE_TRANSCRIPT" "$SECURE_TRANSCRIPT" |
-		$COMPOSE run --rm -T pipeline compare-builds
+		$COMPOSE exec -T pipeline /usr/local/bin/pipeline compare-builds
 
 	down
 	printf '\n=== planless: the vulnerable demonstration completed\n'
@@ -185,18 +186,18 @@ REFUSED
 restore() {
 	step "the fix: applying the secure value set closes it again"
 	scenario secure-apply >"$SECURE_TRANSCRIPT"
-	$COMPOSE run --rm -T outside internet-secure-baseline
+	$COMPOSE exec -T outside /usr/local/bin/client internet-secure-baseline
 }
 
 # vulnerable_scenario runs one misconfigured scenario on the vulnerable surface
 # and reconciles it against the verdict that scenario declared.
 vulnerable_scenario() {
 	name="$1"
-	transcript="$($COMPOSE_ALL run --rm -T vulnerable-pipeline "$name")"
+	transcript="$($COMPOSE_ALL exec -T vulnerable-pipeline /usr/local/bin/pipeline "$name")"
 	work="$(mktemp -d)"
-	$COMPOSE run --rm -T outside observe >"$work/internet" &
+	$COMPOSE exec -T outside /usr/local/bin/client observe >"$work/internet" &
 	internet_probe=$!
-	$COMPOSE run --rm -T finance observe >"$work/corp" &
+	$COMPOSE exec -T finance /usr/local/bin/client observe >"$work/corp" &
 	corp_probe=$!
 	wait "$internet_probe"
 	wait "$corp_probe"
@@ -204,7 +205,7 @@ vulnerable_scenario() {
 	# The reconciliation asserts the verdict the scenario declared. A run that
 	# lands an exposure must fail it; a run the gate refused must not.
 	printf '%s\n' "$transcript" | cat - "$work/internet" "$work/corp" |
-		$COMPOSE_ALL run --rm -T vulnerable-pipeline reconcile >/dev/null
+		$COMPOSE_ALL exec -T vulnerable-pipeline /usr/local/bin/pipeline reconcile >/dev/null
 	rm -rf "$work"
 	printf '%s\n' "$transcript"
 }
@@ -226,12 +227,15 @@ refusals() {
 
 containment_gate() {
 	step "static containment assertions over the resolved compose configuration"
-	$COMPOSE_ALL config --format json | $COMPOSE run --rm -T tests go run ./cmd/contain
+	$COMPOSE_ALL config --format json | $COMPOSE exec -T tests go run ./cmd/contain
 }
 
 up() {
-	step "start the control plane and the fare engine"
+	step "start the platform and the containers the run exercises"
 	$COMPOSE up -d --wait controlplane fare-engine
+	# The clients, the harness and the Go gate stay up for the whole run, so a
+	# step costs an exec rather than a container.
+	$COMPOSE up -d --no-recreate outside finance ops verifier pipeline tests
 }
 
 down() {
@@ -241,38 +245,36 @@ down() {
 
 selfchecks() {
 	step "runtime hardening and isolation assertions, from inside each container"
-	$COMPOSE exec -T controlplane /usr/local/bin/client selfcheck
-	$COMPOSE exec -T fare-engine /usr/local/bin/client selfcheck
-	$COMPOSE run --rm -T outside selfcheck
-	$COMPOSE run --rm -T finance selfcheck
-	$COMPOSE run --rm -T ops selfcheck
-	$COMPOSE run --rm -T verifier selfcheck
-	$COMPOSE run --rm -T --entrypoint /usr/local/bin/client pipeline selfcheck
-	$COMPOSE run --rm -T tests go run ./cmd/client selfcheck
+	# Each assertion is made by a container that actually serves the
+	# demonstration, about itself.
+	for service in controlplane fare-engine outside finance ops verifier pipeline; do
+		$COMPOSE exec -T "$service" /usr/local/bin/client selfcheck
+	done
+	$COMPOSE exec -T tests go run ./cmd/client selfcheck
 }
 
 checks() {
 	step "from the internet segment: only the deliberately public status page"
-	$COMPOSE run --rm -T outside internet-secure-baseline
+	$COMPOSE exec -T outside /usr/local/bin/client internet-secure-baseline
 
 	step "from the corporate segment: the finance principal reads the refund export"
-	$COMPOSE run --rm -T finance finance-corp-read
+	$COMPOSE exec -T finance /usr/local/bin/client finance-corp-read
 
 	step "from the operations range: the fare engine admin port answers"
-	$COMPOSE run --rm -T ops ops-admin-read
+	$COMPOSE exec -T ops /usr/local/bin/client ops-admin-read
 
 	step "the applied platform state equals the checked-in fixture, byte for byte"
-	$COMPOSE run --rm -T verifier state-matches-fixture
+	$COMPOSE exec -T verifier /usr/local/bin/client state-matches-fixture
 
 	step "the one enumerated admin transition, from the operations range"
-	$COMPOSE run --rm -T ops ops-admin-change
+	$COMPOSE exec -T ops /usr/local/bin/client ops-admin-change
 
 	step "the platform recorded exactly one change"
-	$COMPOSE run --rm -T verifier ledger-records-one-change
+	$COMPOSE exec -T verifier /usr/local/bin/client ledger-records-one-change
 }
 
 state() {
-	$COMPOSE run --rm -T verifier state-matches-fixture
+	$COMPOSE exec -T verifier /usr/local/bin/client state-matches-fixture
 }
 
 VULNERABLE_TRANSCRIPT="${TMPDIR:-/tmp}/planless-vulnerable-transcript.json"
@@ -281,11 +283,13 @@ SECURE_TRANSCRIPT="${TMPDIR:-/tmp}/planless-secure-transcript.json"
 case "${1:-}" in
 verify)
 	build
+	# The containers the run exercises come up first: from here on a step costs
+	# an exec rather than a container.
+	up
 	go_gate
 	containment_gate
 	offline_init
 	policy_gate
-	up
 	selfchecks
 	refusals
 	apply
