@@ -1,0 +1,155 @@
+name: planless
+
+# Two hermetic segments with no route to anything outside this file. The trust
+# boundary between them is the whole point of the demonstration.
+networks:
+  corp:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.20.0.0/16
+  internet:
+    internal: true
+    ipam:
+      config:
+        - subnet: 198.51.100.0/24
+
+x-hardened: &hardened
+  image: planless:dev
+  user: "65532:65532"
+  read_only: true
+  privileged: false
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+  restart: "no"
+
+services:
+  # The control plane's public edge is the only member of both segments.
+  controlplane:
+    <<: *hardened
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: runtime
+    command: ["/usr/local/bin/controlplane"]
+    environment:
+      PLANLESS_CORP_ADDR: "10.20.1.10:8080"
+      PLANLESS_EDGE_ADDR: "198.51.100.10:9000"
+      PLANLESS_SEED: "secure-baseline"
+      PLANLESS_SCENARIO: "secure-baseline"
+      PLANLESS_TMPFS: "/state"
+    tmpfs:
+      - /state
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/controlplane", "healthcheck"]
+      interval: "2s"
+      timeout: "2s"
+      retries: 20
+      start_period: "1s"
+    networks:
+      corp:
+        ipv4_address: 10.20.1.10
+      internet:
+        ipv4_address: 198.51.100.10
+
+  fare-engine:
+    <<: *hardened
+    command: ["/usr/local/bin/fare-engine"]
+    environment:
+      PLANLESS_BIND: "10.20.1.20"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/fare-engine", "healthcheck"]
+      interval: "2s"
+      timeout: "2s"
+      retries: 20
+      start_period: "1s"
+    networks:
+      corp:
+        ipv4_address: 10.20.1.20
+
+  # The probe client. Attached only to the simulated public segment, so what it
+  # can reach is an observation rather than a claim.
+  outside:
+    <<: *hardened
+    profiles: ["checks"]
+    entrypoint: ["/usr/local/bin/client"]
+    environment:
+      PLANLESS_TMPFS: ""
+    depends_on:
+      controlplane:
+        condition: service_healthy
+      fare-engine:
+        condition: service_healthy
+    networks:
+      internet:
+        ipv4_address: 198.51.100.50
+
+  # The finance reporting workstation, inside the corporate segment.
+  finance:
+    <<: *hardened
+    profiles: ["checks"]
+    entrypoint: ["/usr/local/bin/client"]
+    depends_on:
+      controlplane:
+        condition: service_healthy
+      fare-engine:
+        condition: service_healthy
+    networks:
+      corp:
+        ipv4_address: 10.20.5.30
+
+  # An operations workstation inside 10.20.7.0/24.
+  ops:
+    <<: *hardened
+    profiles: ["checks"]
+    entrypoint: ["/usr/local/bin/client"]
+    depends_on:
+      controlplane:
+        condition: service_healthy
+      fare-engine:
+        condition: service_healthy
+    networks:
+      corp:
+        ipv4_address: 10.20.7.40
+
+  # A corporate workstation outside the operations range.
+  verifier:
+    <<: *hardened
+    profiles: ["checks"]
+    entrypoint: ["/usr/local/bin/client"]
+    depends_on:
+      controlplane:
+        condition: service_healthy
+    networks:
+      corp:
+        ipv4_address: 10.20.5.31
+
+  # The Go gate: tests, vet and formatting, plus the static containment check
+  # over this file, all through the same container boundary as everything else.
+  tests:
+    <<: *hardened
+    profiles: ["checks"]
+    image: planless-builder:dev
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: builder
+    working_dir: /src
+    environment:
+      GOFLAGS: "-trimpath"
+      GOTOOLCHAIN: "local"
+      GOCACHE: "/tmp/gocache"
+      GOMODCACHE: "/tmp/gomodcache"
+      GOPATH: "/tmp/gopath"
+      HOME: "/tmp"
+      CGO_ENABLED: "0"
+      PLANLESS_TMPFS: "/tmp"
+    # The Go toolchain compiles test binaries and then executes them, so this
+    # one mount is exec-capable. It is a build and verification container: it
+    # runs no part of the demonstrated platform, holds no state, and is never
+    # attached to the public segment.
+    tmpfs:
+      - /tmp:rw,exec
+    networks:
+      corp:
+        ipv4_address: 10.20.9.80
