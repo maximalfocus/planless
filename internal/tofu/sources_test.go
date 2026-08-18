@@ -170,3 +170,48 @@ func TestProviderHasNoExecutionOrEnvironmentPath(t *testing.T) {
 		t.Fatal("no provider sources were checked")
 	}
 }
+
+// The bundle a scan reads carries the configuration files and their resource
+// definitions, with whitespace normalized so alignment cannot hide a match.
+func TestSourceBundleCarriesResourceDefinitions(t *testing.T) {
+	bundle, err := BuildSourceBundle("../../infra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle.Files) < 3 {
+		t.Fatalf("expected the configuration files to be read, got %d", len(bundle.Files))
+	}
+	paths := map[string]bool{}
+	blocks := 0
+	for _, f := range bundle.Files {
+		paths[f.Path] = true
+		blocks += len(f.ResourceBlocks)
+		if filepath.Ext(f.Path) != ".tf" {
+			t.Fatalf("the bundle carries %s, which is not a configuration file", f.Path)
+		}
+	}
+	if blocks == 0 {
+		t.Fatal("the bundle carries no resource definitions at all")
+	}
+	// The variable file the run was given is deliberately not in the bundle:
+	// a scanner of configuration files does not read it, and that is the point.
+	for path := range paths {
+		if strings.HasSuffix(path, ".tfvars") {
+			t.Fatalf("the bundle carries the variable file %s", path)
+		}
+	}
+}
+
+func TestNormalizeWhitespaceExposesAlignedValues(t *testing.T) {
+	got := normalizeWhitespace("  bind          = \"0.0.0.0\"\n\tname   =   \"admin\"\n")
+	want := "bind = \"0.0.0.0\"\nname = \"admin\"\n"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestSourceBundleFailsClosedOnAnEmptyTree(t *testing.T) {
+	if _, err := BuildSourceBundle(t.TempDir()); err == nil {
+		t.Fatal("expected an empty configuration tree to be an error")
+	}
+}

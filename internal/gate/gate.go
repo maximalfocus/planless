@@ -11,6 +11,7 @@ package gate
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -31,8 +32,16 @@ const (
 	ClassMalformed      = "malformed_decision"
 )
 
-// Query is the single decision the policy is asked for.
-const Query = "data.planless.gate.decision"
+// Queries the policy bundle answers.
+const (
+	// Query is the decision the deployment gate is asked for.
+	Query = "data.planless.gate.decision"
+
+	// ScanQuery is the report a scan of the source configuration produces. It
+	// is a separate policy over a separate artifact, which is the whole reason
+	// this demonstration exists.
+	ScanQuery = "data.planless.source_scan.report"
+)
 
 // Config locates the engine, the policy body, and the reviewed allowlist.
 type Config struct {
@@ -40,6 +49,24 @@ type Config struct {
 	PolicyDir     string
 	AllowlistPath string
 	Timeout       time.Duration
+}
+
+// ScanFinding is one thing a source scan matched.
+type ScanFinding struct {
+	Rule   string `json:"rule"`
+	File   string `json:"file"`
+	Reason string `json:"reason"`
+}
+
+// ScanReport is a source scan's account of itself: what it read, what it found,
+// and what it did not read.
+type ScanReport struct {
+	ScannedFiles []string      `json:"scanned_files"`
+	Findings     []ScanFinding `json:"findings"`
+	FindingCount int           `json:"finding_count"`
+	Artifact     string        `json:"artifact"`
+	CorrectAbout string        `json:"correct_about"`
+	DidNotRead   string        `json:"did_not_read"`
 }
 
 // Violation is one reason the gate refused.
@@ -77,6 +104,32 @@ func denial(class, reason string) Decision {
 	}
 }
 
+// Scan runs the source-configuration scan over a bundle of source files.
+//
+// A scan that fails to run is an error, not an empty finding list. "It found
+// nothing" is only worth saying when the scan actually ran.
+func Scan(cfg Config, bundle []byte) (ScanReport, error) {
+	raw, err := run(cfg, bundle, ScanQuery)
+	if err != nil {
+		return ScanReport{}, err
+	}
+	value, err := expressionValue(raw)
+	if err != nil {
+		return ScanReport{}, err
+	}
+	var report ScanReport
+	if err := json.Unmarshal(value, &report); err != nil {
+		return ScanReport{}, fmt.Errorf("the scan returned a report this runner cannot read: %w", err)
+	}
+	if len(report.ScannedFiles) == 0 {
+		return ScanReport{}, errors.New("the scan reports having read no files at all")
+	}
+	if report.Findings == nil {
+		report.Findings = []ScanFinding{}
+	}
+	return report, nil
+}
+
 // Evaluate asks the policy for a decision about one normalized graph.
 func Evaluate(cfg Config, graphJSON []byte) Decision {
 	if !json.Valid(graphJSON) {
@@ -85,6 +138,15 @@ func Evaluate(cfg Config, graphJSON []byte) Decision {
 	if _, err := os.Stat(cfg.AllowlistPath); err != nil {
 		return denial(ClassEngineError, "the reviewed allowlist could not be read")
 	}
+	raw, err := run(cfg, graphJSON, Query)
+	if err != nil {
+		return denial(ClassEngineError, err.Error())
+	}
+	return parse(raw)
+}
+
+// run asks the policy engine one query over one input document.
+func run(cfg Config, input []byte, query string) ([]byte, error) {
 	timeout := cfg.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
@@ -94,9 +156,9 @@ func Evaluate(cfg Config, graphJSON []byte) Decision {
 		"--data", cfg.PolicyDir,
 		"--data", cfg.AllowlistPath,
 		"--stdin-input",
-		Query,
+		query,
 	)
-	cmd.Stdin = bytes.NewReader(graphJSON)
+	cmd.Stdin = bytes.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -104,19 +166,31 @@ func Evaluate(cfg Config, graphJSON []byte) Decision {
 
 	done := make(chan error, 1)
 	if err := cmd.Start(); err != nil {
-		return denial(ClassEngineError, "the policy engine could not be started")
+		return nil, errors.New("the policy engine could not be started")
 	}
 	go func() { done <- cmd.Wait() }()
 	select {
 	case err := <-done:
 		if err != nil {
-			return denial(ClassEngineError, fmt.Sprintf("the policy engine failed: %s", firstLine(stderr.Bytes())))
+			return nil, fmt.Errorf("the policy engine failed: %s", firstLine(stderr.Bytes()))
 		}
 	case <-time.After(timeout):
 		_ = cmd.Process.Kill()
-		return denial(ClassEngineError, "the policy engine did not finish in time")
+		return nil, errors.New("the policy engine did not finish in time")
 	}
-	return parse(stdout.Bytes())
+	return stdout.Bytes(), nil
+}
+
+// expressionValue pulls the single answer out of an engine result.
+func expressionValue(raw []byte) (json.RawMessage, error) {
+	var out evalOutput
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("the policy engine returned output this runner cannot read: %w", err)
+	}
+	if len(out.Result) == 0 || len(out.Result[0].Expressions) == 0 {
+		return nil, errors.New("the policy returned no answer")
+	}
+	return out.Result[0].Expressions[0].Value, nil
 }
 
 type evalOutput struct {

@@ -77,7 +77,10 @@ type report struct {
 
 // vulnerableChecks report against a deliberately misconfigured platform, and
 // everything they produce says so.
-var vulnerableChecks = map[string]bool{"internet-vulnerable-impact": true}
+var vulnerableChecks = map[string]bool{
+	"internet-vulnerable-impact": true,
+	"internet-vulnerable-reach":  true,
+}
 
 var checks = map[string]func() []step{
 	"internet-secure-baseline":   internetSecureBaseline,
@@ -88,6 +91,7 @@ var checks = map[string]func() []step{
 	"ops-admin-change":           opsAdminChange,
 	"ledger-records-one-change":  ledgerRecordsOneChange,
 	"internet-vulnerable-impact": internetVulnerableImpact,
+	"internet-vulnerable-reach":  internetVulnerableReach,
 	"corp-legitimate-paths":      corpLegitimatePaths,
 	"vulnerable-ledger":          vulnerableLedger,
 }
@@ -265,6 +269,22 @@ func internetVulnerableImpact() []step {
 			"the fare engine admin port answers the public segment"),
 		expectStatus(outsideRole, http.MethodPost, pathAdminFareCap, http.StatusOK,
 			"an anonymous caller performs the one enumerated admin transition"),
+	}
+}
+
+// internetVulnerableReach observes the same exposure without touching anything.
+// The one enumerated admin transition is performed once, in the run that shows
+// the impact; the other misconfigured runs only need to show that the same
+// reachability landed.
+//
+// INTENTIONALLY VULNERABLE — local educational material.
+func internetVulnerableReach() []step {
+	return []step{
+		expectStatusAndBody(outsideRole, http.MethodGet, pathRefundExport, http.StatusOK,
+			canon.Digest(fixtures.RefundsCSV()),
+			"an anonymous client on the public segment retrieves the refund export, byte for byte"),
+		expectStatus(outsideRole, http.MethodGet, pathAdminStatus, http.StatusOK,
+			"the fare engine admin port answers the public segment"),
 	}
 }
 

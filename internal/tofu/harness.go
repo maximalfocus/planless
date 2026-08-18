@@ -137,7 +137,33 @@ func Run(cfg Config, scenario Scenario) (*Transcript, error) {
 		t.Artifacts.ResolvedDesiredState = canon.Digest(body)
 	}
 
+	// A scan of the source configuration files is an honest control over the
+	// wrong artifact. What it read and what gets applied are recorded as
+	// separate digested fields, because the gap between them is the lesson.
+	if scenario.Scan {
+		bundle, err := BuildSourceBundle(cfg.WorkDir)
+		if err != nil {
+			return t, err
+		}
+		body, err := json.Marshal(bundle)
+		if err != nil {
+			return t, err
+		}
+		t.Artifacts.EvaluatedByPolicy = canon.Digest(body)
+		t.Artifacts.EvaluatedBy = "a policy scan over the source configuration files"
+		report, err := gate.Scan(gateConfig(cfg, scenario), body)
+		if err != nil {
+			return t, fmt.Errorf("the source scan did not run: %w", err)
+		}
+		t.Scan = &report
+		would := t.evaluate(cfg, scenario, evaluated)
+		t.WouldHaveDecided = &would
+		return t.finish(cfg, scenario, planPath)
+	}
+
 	if !scenario.Gated {
+		would := t.evaluate(cfg, scenario, evaluated)
+		t.WouldHaveDecided = &would
 		return t.finish(cfg, scenario, planPath)
 	}
 	t.Artifacts.EvaluatedByPolicy = canon.Digest(evaluated)
@@ -145,7 +171,11 @@ func Run(cfg Config, scenario Scenario) (*Transcript, error) {
 
 	decision := t.evaluate(cfg, scenario, evaluated)
 	t.Decision = &decision
-	if decision.Denied() {
+	if decision.Denied() && scenario.Advisory {
+		// The gate ran, read the right artifact, and produced the right
+		// findings. Under this setting the pipeline notes them and carries on.
+		t.Enforcement.Advisory = true
+	} else if decision.Denied() {
 		t.refuse(StagePolicy, classOf(decision), "deny-by-default")
 		return t.finish(cfg, scenario, planPath)
 	}
@@ -219,15 +249,21 @@ func (t *Transcript) evaluate(cfg Config, scenario Scenario, artifact []byte) ga
 			Exposures:  []gate.Exposure{},
 		}
 	}
+	return gate.Evaluate(gateConfig(cfg, scenario), body)
+}
+
+// gateConfig locates the engine, the policy body and the reviewed allowlist for
+// one scenario.
+func gateConfig(cfg Config, scenario Scenario) gate.Config {
 	opa := cfg.OPA
 	if scenario.BreakEngine {
 		opa = filepath.Join(cfg.WorkDir, "policy-engine-that-is-not-there")
 	}
-	return gate.Evaluate(gate.Config{
+	return gate.Config{
 		OPA:           opa,
 		PolicyDir:     cfg.PolicyDir,
 		AllowlistPath: filepath.Join(cfg.AllowlistDir, scenario.AllowlistOf()),
-	}, body)
+	}
 }
 
 // finish applies when nothing refused, then records the outcome and asserts the
@@ -273,7 +309,22 @@ func (t *Transcript) finish(cfg Config, scenario Scenario, planPath string) (*Tr
 func (t *Transcript) assert(scenario Scenario) bool {
 	switch scenario.Expect {
 	case ExpectApplied:
-		return t.Enforcement.OperatorResult == ResultDeployed
+		if t.Enforcement.OperatorResult != ResultDeployed {
+			return false
+		}
+		if scenario.Scan {
+			// The scan must have run, found nothing, and been wrong about
+			// nothing: a policy reading the resolved artifact would have
+			// refused the very same run.
+			return t.Scan != nil && t.Scan.FindingCount == 0 &&
+				t.WouldHaveDecided != nil && t.WouldHaveDecided.Denied()
+		}
+		if scenario.Advisory {
+			// The gate must have produced real findings and been ignored.
+			return t.Enforcement.Advisory && t.Decision != nil &&
+				t.Decision.Denied() && len(t.Decision.Violations) >= 2
+		}
+		return true
 	case ExpectRefused:
 		if t.Enforcement.OperatorResult != ResultRefused || t.Enforcement.Applied {
 			return false

@@ -61,6 +61,14 @@ type Scenario struct {
 	// demonstration, and a run where it stopped failing would be a regression.
 	ExpectReconciliation string
 
+	// Scan replaces the deployment gate with a scan of the source
+	// configuration files: an honest control over the wrong artifact.
+	Scan bool
+
+	// Advisory runs the deployment gate and then does not obey it. A finding
+	// without authority is a log line.
+	Advisory bool
+
 	// Vulnerable marks a run that applies, or evaluates, a deliberately
 	// misconfigured value set. Such a run needs both opt-ins and everything it
 	// produces is labelled.
@@ -185,6 +193,25 @@ var Scenarios = map[string]Scenario{
 		ID:                   "vulnerable-ungated",
 		Description:          "the misconfigured value set, applied by a path no gate stands on",
 		VarFile:              "vulnerable.tfvars",
+		Vulnerable:           true,
+		Expect:               ExpectApplied,
+		ExpectReconciliation: VerdictFail,
+	},
+	"half-fix-source-scan": {
+		ID:                   "half-fix-source-scan",
+		Description:          "a policy scan reads the configuration files, finds nothing, and is right about what it read",
+		VarFile:              "vulnerable.tfvars",
+		Scan:                 true,
+		Vulnerable:           true,
+		Expect:               ExpectApplied,
+		ExpectReconciliation: VerdictFail,
+	},
+	"half-fix-report-only": {
+		ID:                   "half-fix-report-only",
+		Description:          "the gate reads the resolved plan, reports both findings correctly, and does not stop the pipeline",
+		VarFile:              "vulnerable.tfvars",
+		Gated:                true,
+		Advisory:             true,
 		Vulnerable:           true,
 		Expect:               ExpectApplied,
 		ExpectReconciliation: VerdictFail,

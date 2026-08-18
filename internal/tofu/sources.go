@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -154,4 +155,68 @@ func ValuesMissingFromPlan(planJSON []byte) []string {
 		}
 	}
 	return missing
+}
+
+// SourceFile is one configuration file as a scan sees it: its path and its
+// resource definitions, with whitespace normalized so a scan matches shapes
+// rather than one spelling of them.
+type SourceFile struct {
+	Path           string   `json:"path"`
+	ResourceBlocks []string `json:"resource_blocks"`
+}
+
+// SourceBundle is the input a source-configuration scan reads.
+//
+// It carries the configuration files, and nothing else. Not the variable file
+// the run was given, and not the resolved desired state — because a scanner of
+// configuration files reads configuration files, and the point of this
+// demonstration is what that leaves out.
+type SourceBundle struct {
+	Files []SourceFile `json:"files"`
+}
+
+// BuildSourceBundle reads the `.tf` files under dir into a scan input.
+func BuildSourceBundle(dir string) (*SourceBundle, error) {
+	bundle := &SourceBundle{Files: []SourceFile{}}
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Ext(path) != ".tf" {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		blocks := []string{}
+		for _, block := range ResourceBlockBodies(string(body)) {
+			blocks = append(blocks, normalizeWhitespace(block))
+		}
+		bundle.Files = append(bundle.Files, SourceFile{Path: rel, ResourceBlocks: blocks})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(bundle.Files) == 0 {
+		return nil, fmt.Errorf("no configuration files found under %s", dir)
+	}
+	sort.Slice(bundle.Files, func(i, j int) bool { return bundle.Files[i].Path < bundle.Files[j].Path })
+	return bundle, nil
+}
+
+// normalizeWhitespace collapses runs of spaces and tabs so alignment cannot
+// hide a match. A scan that missed a value because somebody lined up an equals
+// sign would be a broken scan, not a defeated one.
+func normalizeWhitespace(block string) string {
+	lines := strings.Split(strings.Trim(block, "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = strings.Join(strings.Fields(line), " ")
+	}
+	return strings.Join(lines, "\n") + "\n"
 }

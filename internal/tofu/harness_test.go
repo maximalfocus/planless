@@ -364,3 +364,87 @@ func TestVulnerableRunsAreLabelled(t *testing.T) {
 		t.Fatalf("the secure run expects reconciliation %s", got)
 	}
 }
+
+// An advisory gate and a scan that reads the wrong artifact are misconfigured
+// shapes. Neither may be reachable from a secure scenario: a gate that can be
+// asked to report instead of decide is one of the failures this project exists
+// to show, not a setting it offers.
+func TestHalfFixesAreOnlyReachableAsMisconfiguredScenarios(t *testing.T) {
+	advisory, scans := 0, 0
+	for name, s := range Scenarios {
+		if s.Advisory {
+			advisory++
+			if !s.Vulnerable {
+				t.Fatalf("scenario %s is advisory but is not marked vulnerable", name)
+			}
+		}
+		if s.Scan {
+			scans++
+			if !s.Vulnerable {
+				t.Fatalf("scenario %s scans the sources but is not marked vulnerable", name)
+			}
+		}
+		if s.Advisory && !s.Gated {
+			t.Fatalf("scenario %s is advisory without running the gate at all", name)
+		}
+	}
+	if advisory == 0 || scans == 0 {
+		t.Fatalf("expected both half-fix shapes to exist, got %d advisory and %d scanning", advisory, scans)
+	}
+	for _, name := range AvailableScenarios(SurfaceSecure, Acknowledgement) {
+		if Scenarios[name].Advisory || Scenarios[name].Scan {
+			t.Fatalf("the secure surface offers the half-fix scenario %s", name)
+		}
+	}
+}
+
+// A scan that found nothing proves nothing unless the run it let through would
+// have been refused by a policy reading the resolved artifact.
+func TestScanScenarioRequiresAGateThatWouldHaveRefused(t *testing.T) {
+	scenario := Scenarios["half-fix-source-scan"]
+	tr := &Transcript{Scenario: scenario.ID, Expected: ExpectApplied}
+	tr.Enforcement.OperatorResult = ResultDeployed
+	if tr.assert(scenario) {
+		t.Fatal("a scan scenario with no scan report must not pass")
+	}
+	tr.Scan = &gate.ScanReport{FindingCount: 0, ScannedFiles: []string{"main.tf"}}
+	if tr.assert(scenario) {
+		t.Fatal("a scan scenario must show what a policy over the resolved artifact would have said")
+	}
+	tr.WouldHaveDecided = &gate.Decision{Result: gate.ResultAdmit}
+	if tr.assert(scenario) {
+		t.Fatal("a scan scenario where the resolved artifact was fine demonstrates nothing")
+	}
+	tr.WouldHaveDecided = &gate.Decision{Result: gate.ResultDeny}
+	if !tr.assert(scenario) {
+		t.Fatal("a scan that found nothing beside a resolved artifact that would be refused should pass")
+	}
+	tr.Scan.FindingCount = 1
+	if tr.assert(scenario) {
+		t.Fatal("a scan that found something is not this shape")
+	}
+}
+
+// The report-only shape needs the gate to have produced real findings and to
+// have been ignored anyway.
+func TestAdvisoryScenarioRequiresRealFindingsAndAnApply(t *testing.T) {
+	scenario := Scenarios["half-fix-report-only"]
+	tr := &Transcript{Scenario: scenario.ID, Expected: ExpectApplied}
+	tr.Enforcement.OperatorResult = ResultDeployed
+	if tr.assert(scenario) {
+		t.Fatal("an advisory scenario with no decision must not pass")
+	}
+	tr.Enforcement.Advisory = true
+	tr.Decision = &gate.Decision{Result: gate.ResultDeny, Violations: []gate.Violation{{Class: "x"}}}
+	if tr.assert(scenario) {
+		t.Fatal("one finding is not both findings")
+	}
+	tr.Decision.Violations = append(tr.Decision.Violations, gate.Violation{Class: "y"})
+	if !tr.assert(scenario) {
+		t.Fatal("a gate that found both exposures and was ignored should pass")
+	}
+	tr.Decision.Result = gate.ResultAdmit
+	if tr.assert(scenario) {
+		t.Fatal("an advisory scenario where the gate admitted demonstrates nothing")
+	}
+}
