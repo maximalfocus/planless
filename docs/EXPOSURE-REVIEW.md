@@ -34,6 +34,21 @@ result is written down rather than remembered.
 - any capability that would help against something real: name resolution or socket opening outside the
   two places that need it, which are named with their reasons in the review script.
 
+## The excluded paths
+
+Two paths are excluded from the pattern search, and only these two, because each exists to hold the
+pattern list itself:
+
+- `scripts/exposure-review.sh` — this review;
+- `internal/publication` — the same list, for the check that runs inside the container gate.
+
+They are named here and in the script rather than hidden in a configuration file. An exclusion nobody
+can see is how a review starts lying.
+
+The working-tree pass searches **untracked** files too. A new file is invisible to a tracked-only search
+until it is staged, and by then it may already be in a commit — which was found the honest way, by CI
+catching a file the local run had not yet seen.
+
 ## The two deliberate exceptions
 
 Both resolve names or open sockets on purpose, and both are named rather than excluded quietly:

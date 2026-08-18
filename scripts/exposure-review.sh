@@ -24,8 +24,16 @@ report() {
 # a promise of absence is not an exposure.
 forbidden='AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[baprs]-|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|planless-prd|KUBECONFIG=|current-context:|\.amazonaws\.com|\.blob\.core\.windows\.net|\.googleapis\.com|eks\.amazonaws|AWS_SECRET_ACCESS_KEY|AZURE_CLIENT_SECRET|GOOGLE_APPLICATION_CREDENTIALS'
 
-# The working tree, excluding this file's own pattern list.
-if git grep -nIE "$forbidden" -- . ':!scripts/exposure-review.sh' >/tmp/planless-exposure-tree 2>/dev/null; then
+# The working tree, including files that are not tracked yet — a new file is
+# invisible to a tracked-only search until it is staged, and by then it may
+# already be in a commit.
+#
+# Two paths are excluded, and only these two: this script, and the package whose
+# entire job is to hold the same pattern list for the in-container check. An
+# exclusion nobody can see is how a review starts lying, so they are named here
+# rather than hidden in a config file.
+if git grep --untracked -nIE "$forbidden" -- . \
+	':!scripts/exposure-review.sh' ':!internal/publication' >/tmp/planless-exposure-tree 2>/dev/null; then
 	report "tracked files" "FINDINGS"
 	cat /tmp/planless-exposure-tree
 else
@@ -47,7 +55,7 @@ if git rev-list --objects --all |
 	while read -r oid path; do
 		if git cat-file blob "$oid" 2>/dev/null | grep -qIE "$forbidden"; then
 			case "$path" in
-			scripts/exposure-review.sh) continue ;;
+			scripts/exposure-review.sh | internal/publication/*) continue ;;
 			esac
 			echo "$path ($oid)"
 		fi
