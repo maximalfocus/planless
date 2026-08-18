@@ -133,6 +133,10 @@ type Transcript struct {
 	// that is the control this pipeline ran.
 	Scan *gate.ScanReport `json:"source_scan,omitempty"`
 
+	// Denylist is the report of the literal-matching rules, when that is the
+	// control this pipeline ran.
+	Denylist *gate.DenylistReport `json:"denylist,omitempty"`
+
 	// WouldHaveDecided is what a policy reading the resolved desired state
 	// would have said. It is recorded when nothing in the pipeline read that
 	// artifact, so the transcript can show the gap rather than assert it.
@@ -191,6 +195,17 @@ func (t *Transcript) Render() string {
 		}
 		line("correct about", t.Scan.CorrectAbout)
 		line("did not read", t.Scan.DidNotRead)
+	}
+	if t.Denylist != nil {
+		fmt.Fprintln(&b, "\ndenylist of known-bad literals")
+		line("rules", strings.Join(t.Denylist.Rules, ", "))
+		line("artifact", t.Denylist.Artifact)
+		line("method", t.Denylist.Method)
+		line("findings", fmt.Sprintf("%d", t.Denylist.FindingCount))
+		for _, f := range t.Denylist.Findings {
+			line(f.Rule, f.Resource+": "+f.Matched)
+		}
+		line("limitation", t.Denylist.Limitation)
 	}
 	if t.WouldHaveDecided != nil {
 		fmt.Fprintf(&b, "\na policy reading the resolved desired state would have decided %s\n",
@@ -253,8 +268,11 @@ func (t *Transcript) Render() string {
 		fmt.Fprintf(&b, "\nreconciliation %s%s — %s\n", t.Reconcile.Verdict, note, t.Reconcile.Reason)
 	}
 	switch {
-	case t.Decision == nil && t.Scan == nil:
+	case t.Decision == nil && t.Scan == nil && t.Denylist == nil:
 		fmt.Fprintln(&b, "\nno artifact was evaluated: this pipeline has no policy step")
+	case t.Decision == nil && t.Denylist != nil:
+		fmt.Fprintln(&b, "\nthe right artifact was evaluated, and the wrong question was asked of it:")
+		fmt.Fprintln(&b, "  matching a value finds only the spelling it was shown")
 	case t.Decision == nil && t.Scan != nil:
 		fmt.Fprintln(&b, "\nthe artifact that was applied was evaluated by nothing:")
 		fmt.Fprintln(&b, "  the scan read the configuration files; the apply consumed the resolved plan")

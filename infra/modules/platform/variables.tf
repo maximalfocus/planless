@@ -107,3 +107,39 @@ variable "admin_profile" {
   default     = "operations-range"
   description = "Which admin exposure profile applies."
 }
+
+# An additional permission resource for the refund export.
+#
+# Permissions are standalone resources on this platform, so one can be added
+# without touching the bucket or the grant the bucket's own module declares.
+# That is ordinary. It is also why a rule that inspects the bucket learns
+# nothing about who can read it.
+
+variable "extra_export_grants" {
+  type = map(object({
+    principals    = list(string)
+    source_ranges = list(string)
+  }))
+
+  default = {
+    none = {
+      principals    = []
+      source_ranges = []
+    }
+
+    # Every principal, from every address — written as two halves of the
+    # address space rather than as one range.
+    anonymous = {
+      principals    = ["*"]
+      source_ranges = ["0.0.0.0/1", "128.0.0.0/1"]
+    }
+  }
+
+  description = "Named shapes for an additional refund-export permission."
+}
+
+variable "extra_export_grant" {
+  type        = string
+  default     = "none"
+  description = "Which additional refund-export permission, if any, exists."
+}

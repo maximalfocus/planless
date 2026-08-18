@@ -55,10 +55,16 @@ type Port struct {
 
 // Resource is one addressable thing on the platform.
 type Resource struct {
-	Kind       string                `json:"kind"`
-	Name       string                `json:"name"`
-	Address    string                `json:"address"`
-	Ports      []Port                `json:"ports,omitempty"`
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	Ports   []Port `json:"ports,omitempty"`
+
+	// Attributes is what the artifact said about this resource, including
+	// anything the normalizer did not recognize. A policy that wants to match a
+	// field can; a policy that wants to compute reachability does not need to.
+	Attributes map[string]any `json:"attributes,omitempty"`
+
 	Provenance map[string]Provenance `json:"provenance,omitempty"`
 }
 

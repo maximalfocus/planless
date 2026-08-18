@@ -175,6 +175,30 @@ func Run(cfg Config, scenario Scenario) (*Transcript, error) {
 		return t.finish(cfg, scenario, planPath)
 	}
 
+	// A denylist of known-bad literals, over the resolved desired state. The
+	// right artifact, the wrong question — and the computed answer is printed
+	// beside it, so the difference between matching and computing is one view.
+	if scenario.Denylist {
+		t.Artifacts.EvaluatedByPolicy = canon.Digest(evaluated)
+		t.Artifacts.EvaluatedBy = "a denylist of known-bad literals, over the resolved desired state"
+		normalized, err := graph.FromPlan(evaluated, segments())
+		if err != nil {
+			return t, err
+		}
+		body, err := json.Marshal(normalized)
+		if err != nil {
+			return t, err
+		}
+		report, err := gate.Denylist(gateConfig(cfg, scenario), body)
+		if err != nil {
+			return t, fmt.Errorf("the denylist did not run: %w", err)
+		}
+		t.Denylist = &report
+		would := t.evaluate(cfg, scenario, evaluated)
+		t.WouldHaveDecided = &would
+		return t.finish(cfg, scenario, planPath)
+	}
+
 	if !scenario.Gated {
 		would := t.evaluate(cfg, scenario, evaluated)
 		t.WouldHaveDecided = &would
@@ -380,6 +404,14 @@ func (t *Transcript) assert(scenario Scenario) bool {
 			// nothing: a policy reading the resolved artifact would have
 			// refused the very same run.
 			return t.Scan != nil && t.Scan.FindingCount == 0 &&
+				t.WouldHaveDecided != nil && t.WouldHaveDecided.Denied()
+		}
+		if scenario.Denylist {
+			// The rules must have run, matched nothing, and been wrong about
+			// nothing: a policy that computes reachability refuses the very
+			// same artifact.
+			return t.Denylist != nil && t.Denylist.FindingCount == 0 &&
+				len(t.Denylist.Rules) > 0 &&
 				t.WouldHaveDecided != nil && t.WouldHaveDecided.Denied()
 		}
 		if scenario.Advisory {

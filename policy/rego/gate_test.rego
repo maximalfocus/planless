@@ -182,6 +182,43 @@ test_narrower_exposure_is_admitted if {
 	d.result == "admit"
 }
 
+# Two spellings of "everyone can read this" must produce one reachability, or
+# the demonstration cannot claim the bypasses are equivalent.
+test_reachability_collapses_once_every_principal_is_admitted if {
+	anonymous_only := object.union(secure_input, {"grants": [{
+		"id": "grant-export",
+		"resource_kind": "bucket",
+		"resource_name": "fare-exports",
+		"principals": ["*"],
+		"actions": ["read"],
+		"source_ranges": ["0.0.0.0/0"],
+	}]})
+	alongside := object.union(secure_input, {"grants": [
+		{
+			"id": "grant-export",
+			"resource_kind": "bucket",
+			"resource_name": "fare-exports",
+			"principals": ["finance-reporting"],
+			"actions": ["read"],
+			"source_ranges": ["10.20.0.0/16"],
+		},
+		{
+			"id": "grant-export-extra",
+			"resource_kind": "bucket",
+			"resource_name": "fare-exports",
+			"principals": ["*"],
+			"actions": ["read"],
+			"source_ranges": ["0.0.0.0/1", "128.0.0.0/1"],
+		},
+	]})
+	a := gate.decision with input as anonymous_only with data.allowlist as allowlist
+	b := gate.decision with input as alongside with data.allowlist as allowlist
+	first := {e.resource: e.reachability | some e in a.exposures}
+	second := {e.resource: e.reachability | some e in b.exposures}
+	first["bucket/fare-exports"] == second["bucket/fare-exports"]
+	contains(first["bucket/fare-exports"], "0.0.0.0/0")
+}
+
 test_unknown_resource_type_denies if {
 	d := gate.decision with input as object.union(secure_input, {"unknown_resource_types": ["democloud_firewall"]}) with data.allowlist as allowlist
 	d.result == "deny"

@@ -48,6 +48,11 @@
                 "var.export_readers"
               ]
             },
+            "extra_export_grant": {
+              "references": [
+                "var.extra_export_grant"
+              ]
+            },
             "status_bucket": {
               "references": [
                 "democloud_bucket.status_page.name",
@@ -67,6 +72,49 @@
           },
           "module": {
             "resources": [
+              {
+                "address": "democloud_grant.export_extra",
+                "count_expression": {
+                  "references": [
+                    "var.extra_export_grant"
+                  ]
+                },
+                "expressions": {
+                  "actions": {
+                    "constant_value": [
+                      "read"
+                    ]
+                  },
+                  "id": {
+                    "constant_value": "grant-fare-exports-extra-read"
+                  },
+                  "principals": {
+                    "references": [
+                      "var.extra_export_grants",
+                      "var.extra_export_grant"
+                    ]
+                  },
+                  "resource_kind": {
+                    "constant_value": "bucket"
+                  },
+                  "resource_name": {
+                    "references": [
+                      "var.export_bucket"
+                    ]
+                  },
+                  "source_ranges": {
+                    "references": [
+                      "var.extra_export_grants",
+                      "var.extra_export_grant"
+                    ]
+                  }
+                },
+                "mode": "managed",
+                "name": "export_extra",
+                "provider_config_key": "democloud",
+                "schema_version": 0,
+                "type": "democloud_grant"
+              },
               {
                 "address": "democloud_grant.fare_exports_read",
                 "expressions": {
@@ -359,6 +407,45 @@
                   "string"
                 ]
               },
+              "extra_export_grant": {
+                "default": "none",
+                "description": "Which additional refund-export permission, if any, exists.",
+                "type": "string"
+              },
+              "extra_export_grants": {
+                "default": {
+                  "anonymous": {
+                    "principals": [
+                      "*"
+                    ],
+                    "source_ranges": [
+                      "0.0.0.0/1",
+                      "128.0.0.0/1"
+                    ]
+                  },
+                  "none": {
+                    "principals": [],
+                    "source_ranges": []
+                  }
+                },
+                "description": "Named shapes for an additional refund-export permission.",
+                "type": [
+                  "map",
+                  [
+                    "object",
+                    {
+                      "principals": [
+                        "list",
+                        "string"
+                      ],
+                      "source_ranges": [
+                        "list",
+                        "string"
+                      ]
+                    }
+                  ]
+                ]
+              },
               "service_bind": {
                 "default": "10.20.1.20",
                 "description": "Address the fare engine service listener binds.",
@@ -593,6 +680,11 @@
             "list",
             "string"
           ]
+        },
+        "extra_export_grant": {
+          "default": "none",
+          "description": "Which of the module's additional refund-export permissions, if any, exists.",
+          "type": "string"
         },
         "log_retention_days": {
           "default": 30,
@@ -1321,6 +1413,9 @@
       "value": [
         "finance-reporting"
       ]
+    },
+    "extra_export_grant": {
+      "value": "none"
     },
     "log_retention_days": {
       "value": 30

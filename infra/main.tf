@@ -78,7 +78,8 @@ module "platform" {
   assets_readers        = var.assets_readers
   assets_reader_sources = var.assets_reader_sources
 
-  admin_profile = var.admin_profile
+  admin_profile      = var.admin_profile
+  extra_export_grant = var.extra_export_grant
 
   # The fare engine's ingress ranges and bind addresses are not passed here.
   # They resolve from the module's own defaults; the caller only names a

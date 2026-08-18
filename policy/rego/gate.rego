@@ -264,6 +264,28 @@ violations contains violation(
 	not port_exposure(r.name, p.name, p.bind)
 }
 
+# render_reachability is the exposure without the rules that produced it: who
+# can reach this, from where. Two configurations that spell the same desired
+# state differently produce different rules and the same reachability, and that
+# equality is the whole claim about the bypasses.
+render_reachability(exposure) := sprintf("principals=%v sources=%v", [
+	effective_principals(object.get(exposure, "principals", set())),
+	sort_or_empty(object.get(exposure, "sources", set())),
+])
+
+# Once every principal is admitted, naming any other one adds nothing. The
+# effective principal set is "everyone", and a reachability that listed the
+# named principals beside it would make two spellings of the same access look
+# different. This is the same "compute, do not match" idea applied to
+# principals rather than to addresses.
+effective_principals(principals) := ["*"] if {
+	"*" in principals
+}
+
+effective_principals(principals) := sort_or_empty(principals) if {
+	not "*" in principals
+}
+
 render_exposure(exposure) := sprintf("principals=%v sources=%v rules=%v", [
 	sort_or_empty(object.get(exposure, "principals", set())),
 	sort_or_empty(object.get(exposure, "sources", set())),
@@ -305,6 +327,7 @@ exposures contains e if {
 	e := {
 		"resource": sprintf("bucket/%s", [r.name]),
 		"computed": render_exposure(exposure),
+		"reachability": render_reachability(exposure),
 		"admitted_by": object.get(admitted, sprintf("bucket/%s", [r.name]), ""),
 	}
 }
@@ -317,6 +340,7 @@ exposures contains e if {
 	e := {
 		"resource": sprintf("workload/%s:%s", [r.name, p.name]),
 		"computed": render_exposure(exposure),
+		"reachability": render_reachability(exposure),
 		"admitted_by": object.get(admitted, sprintf("workload/%s:%s", [r.name, p.name]), ""),
 	}
 }

@@ -328,3 +328,51 @@ func TestDriftReportNeverClaimsToHaveRemediated(t *testing.T) {
 		t.Fatalf("a clean report should say so:\n%s", clean.Render())
 	}
 }
+
+// Two spellings of one desired state must compute to one reachability. That
+// equality is the claim the denylist shape rests on, so it is compared rather
+// than argued.
+func TestExposureComparison(t *testing.T) {
+	transcript := func(scenario string, exposures ...gate.Exposure) string {
+		body, err := json.Marshal(&Transcript{
+			Document: TranscriptDocument, Scenario: scenario,
+			WouldHaveDecided: &gate.Decision{Result: gate.ResultDeny, Exposures: exposures},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(body) + "\n"
+	}
+	literal := gate.Exposure{
+		Resource:     "bucket/fare-exports",
+		Computed:     `principals=["*"] sources=["0.0.0.0/0"] rules=["grant-a"]`,
+		Reachability: `principals=["*"] sources=["0.0.0.0/0"]`,
+	}
+	// A different rule produced it, and the same people can reach it.
+	bypassed := gate.Exposure{
+		Resource:     "bucket/fare-exports",
+		Computed:     `principals=["*"] sources=["0.0.0.0/0"] rules=["grant-a","grant-b"]`,
+		Reachability: `principals=["*"] sources=["0.0.0.0/0"]`,
+	}
+	if err := CompareExposures(strings.NewReader(transcript("a", literal) + transcript("b", bypassed))); err != nil {
+		t.Fatalf("two spellings of one desired state were reported as different: %v", err)
+	}
+
+	narrower := gate.Exposure{
+		Resource:     "bucket/fare-exports",
+		Reachability: `principals=["finance-reporting"] sources=["10.20.0.0/16"]`,
+	}
+	if err := CompareExposures(strings.NewReader(transcript("a", literal) + transcript("b", narrower))); err == nil {
+		t.Fatal("a genuinely different reachability was not reported")
+	}
+	if err := CompareExposures(strings.NewReader(transcript("a", literal))); err == nil {
+		t.Fatal("a single transcript is not a comparison")
+	}
+	if err := CompareExposures(strings.NewReader(transcript("a"))); err == nil {
+		t.Fatal("a transcript that computed nothing should be refused")
+	}
+	unrelated := gate.Exposure{Resource: "bucket/other", Reachability: `principals=["*"] sources=["0.0.0.0/0"]`}
+	if err := CompareExposures(strings.NewReader(transcript("a", literal) + transcript("b", unrelated))); err == nil {
+		t.Fatal("transcripts with no resource in common should be refused")
+	}
+}

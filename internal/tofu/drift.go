@@ -170,15 +170,52 @@ func applyDriftMutation(api string) error {
 	return nil
 }
 
-// RemoveDriftedGrant deletes the grant the drift scenario added directly at the
-// control plane.
+// UndeclaredGrants are the permissions the demonstration can leave on the
+// platform that the secure configuration does not declare: the one a drift
+// scenario adds directly at the control plane, and the separate permission
+// resource the denylist scenario's value set creates.
+//
+// Each pipeline run starts from empty toolchain state, so an apply creates and
+// updates but never destroys. A permission a later value set does not mention
+// is simply left behind — which is true of the drifted one for a deeper reason,
+// since no configuration ever described it at all. Either way somebody has to
+// remove it, and the demonstration does that explicitly rather than pretending
+// a re-apply closed it.
+var UndeclaredGrants = []string{
+	DriftGrantID,
+	"grant-fare-exports-extra-read",
+}
+
+// RemoveUndeclaredGrants deletes those permissions, and only those.
 //
 // This is deliberately not part of the drift check. The check reports; somebody
 // then decides what to do about it. A check that quietly repaired what it found
-// would hide the very gap the demonstration exists to show, and would make
-// "the repository is correct and the world is not" impossible to observe.
-func RemoveDriftedGrant(api string) error {
-	req, err := http.NewRequest(http.MethodDelete, api+"/v1/resources/grant/"+DriftGrantID, nil)
+// would hide the very gap the demonstration exists to show, and would make "the
+// repository is correct and the world is not" impossible to observe.
+func RemoveUndeclaredGrants(api string) ([]string, error) {
+	state, err := readState(api)
+	if err != nil {
+		return nil, err
+	}
+	present := map[string]bool{}
+	for _, g := range state.Grants {
+		present[g.ID] = true
+	}
+	removed := []string{}
+	for _, id := range UndeclaredGrants {
+		if !present[id] {
+			continue
+		}
+		if err := deleteGrant(api, id); err != nil {
+			return removed, err
+		}
+		removed = append(removed, id)
+	}
+	return removed, nil
+}
+
+func deleteGrant(api, id string) error {
+	req, err := http.NewRequest(http.MethodDelete, api+"/v1/resources/grant/"+id, nil)
 	if err != nil {
 		return err
 	}
@@ -190,7 +227,7 @@ func RemoveDriftedGrant(api string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("the control plane returned %d removing the drifted grant", resp.StatusCode)
+		return fmt.Errorf("the control plane returned %d removing %s", resp.StatusCode, id)
 	}
 	return nil
 }

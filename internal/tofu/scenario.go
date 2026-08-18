@@ -69,6 +69,11 @@ type Scenario struct {
 	// configuration files: an honest control over the wrong artifact.
 	Scan bool
 
+	// Denylist runs the literal-matching rules over the resolved plan instead
+	// of the deny-by-default policy. A denylist that matches nothing cannot
+	// stop anything, so the pipeline carries on.
+	Denylist bool
+
 	// Advisory runs the deployment gate and then does not obey it. A finding
 	// without authority is a log line.
 	Advisory bool
@@ -225,6 +230,15 @@ var Scenarios = map[string]Scenario{
 		VarFile:              "vulnerable.tfvars",
 		Gated:                true,
 		Advisory:             true,
+		Vulnerable:           true,
+		Expect:               ExpectApplied,
+		ExpectReconciliation: VerdictFail,
+	},
+	"half-fix-denylist": {
+		ID:                   "half-fix-denylist",
+		Description:          "two literal rules over the resolved plan, and the same exposure written two other ways",
+		VarFile:              "denylist.tfvars",
+		Denylist:             true,
 		Vulnerable:           true,
 		Expect:               ExpectApplied,
 		ExpectReconciliation: VerdictFail,
