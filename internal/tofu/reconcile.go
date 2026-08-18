@@ -405,3 +405,50 @@ func CompareReachability(r io.Reader) error {
 	}
 	return nil
 }
+
+// CompareApplication requires every observation set on the stream to have seen
+// the same response from the fare engine's service port.
+//
+// The application is identical in every variant of this demonstration: the same
+// build, and the same answer to the same request. No application code, request
+// handler or authorization check differs between the secure and the
+// misconfigured platform, and this is how that is checked rather than asserted.
+func CompareApplication(r io.Reader) error {
+	const resource = "workload/fare-engine:service"
+	dec := json.NewDecoder(r)
+	first := ""
+	seen := 0
+	for {
+		var set ObservationSet
+		if err := dec.Decode(&set); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("the input stream could not be read: %w", err)
+		}
+		if set.Document != ObservationDocument {
+			return fmt.Errorf("the input stream carries an unrecognized document %q", set.Document)
+		}
+		digest := ""
+		for _, o := range set.Observations {
+			if o.Resource == resource && o.Reachable {
+				digest = o.Digest
+			}
+		}
+		if digest == "" {
+			return fmt.Errorf("an observation set did not reach %s", resource)
+		}
+		seen++
+		if seen == 1 {
+			first = digest
+			continue
+		}
+		if digest != first {
+			return fmt.Errorf("the application answered differently between variants: %s and %s", first, digest)
+		}
+	}
+	if seen < 2 {
+		return fmt.Errorf("comparison needs at least two observation sets, got %d", seen)
+	}
+	return nil
+}
