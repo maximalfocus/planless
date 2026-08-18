@@ -280,7 +280,14 @@ func (t *Transcript) Render() string {
 	if len(t.Provenance) > 0 {
 		fmt.Fprintln(&b, "\nwhere the exposure values came from")
 		for _, p := range t.Provenance {
-			line(p.Resource+"."+p.Field, p.Origin+" ("+p.Reference+")")
+			origin := p.Origin
+			if p.Reference != "" {
+				origin += " (" + p.Reference + ")"
+			}
+			if p.Contributors != "" {
+				origin += " via " + p.Contributors
+			}
+			line(p.Resource+"."+p.Field, origin)
 		}
 	}
 	fmt.Fprintf(&b, "\nexpected %s, %s\n", t.Expected, passed(t.Passed))

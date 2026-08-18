@@ -1,0 +1,13 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fare-engine-service
+  annotations:
+    democloud.example/workload: fare-engine
+    democloud.example/port: service
+    democloud.example/rule: rule-fare-engine-service
+spec:
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.20.0.0/16

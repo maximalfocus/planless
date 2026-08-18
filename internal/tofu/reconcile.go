@@ -348,3 +348,60 @@ func CompareExposures(r io.Reader) error {
 	}
 	return nil
 }
+
+// CompareReachability requires every observation set on the stream to agree on
+// what is reachable from the public segment.
+//
+// It compares reachability and nothing else — not status codes, not response
+// digests — because the claim is about which resources a client on the public
+// segment can reach, and two surfaces that produce the same answer to that
+// question have demonstrated the invariant regardless of what else moved.
+func CompareReachability(r io.Reader) error {
+	dec := json.NewDecoder(r)
+	var first map[string]bool
+	seen := 0
+	for {
+		var set ObservationSet
+		if err := dec.Decode(&set); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("the input stream could not be read: %w", err)
+		}
+		if set.Document != ObservationDocument {
+			return fmt.Errorf("the input stream carries an unrecognized document %q", set.Document)
+		}
+		current := map[string]bool{}
+		for _, o := range set.Observations {
+			if o.Segment != fixtures.SegmentInternet {
+				continue
+			}
+			current[o.Resource] = o.Reachable
+		}
+		if len(current) == 0 {
+			return errors.New("an observation set reports nothing from the public segment")
+		}
+		seen++
+		if seen == 1 {
+			first = current
+			continue
+		}
+		if len(first) != len(current) {
+			return fmt.Errorf("observation sets report %d and %d resources", len(first), len(current))
+		}
+		for resource, reachable := range current {
+			want, ok := first[resource]
+			if !ok {
+				return fmt.Errorf("only one observation set reports %s", resource)
+			}
+			if want != reachable {
+				return fmt.Errorf("reachability of %s differs between surfaces: %t and %t",
+					resource, want, reachable)
+			}
+		}
+	}
+	if seen < 2 {
+		return fmt.Errorf("comparison needs at least two observation sets, got %d", seen)
+	}
+	return nil
+}

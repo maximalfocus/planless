@@ -1,0 +1,10 @@
+# The operator status page is deliberately public in every variant. Like every
+# other security-relevant value on this surface, it is resolved by the overlay
+# rather than written in the base.
+apiVersion: v1
+kind: Service
+metadata:
+  name: status-page
+  annotations:
+    democloud.example/readers: "*"
+    democloud.example/reader-sources: 0.0.0.0/0

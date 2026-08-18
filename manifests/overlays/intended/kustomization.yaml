@@ -1,0 +1,8 @@
+# The intended posture, resolved by the overlay.
+resources:
+  - ../../base
+patches:
+  - path: fare-exports.yaml
+  - path: status-page.yaml
+  - path: fare-engine.yaml
+  - path: fare-engine-admin.yaml

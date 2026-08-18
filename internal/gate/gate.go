@@ -45,6 +45,10 @@ const (
 	// DenylistQuery is the report a denylist of known-bad literals produces
 	// over the resolved desired state: the right artifact, the wrong question.
 	DenylistQuery = "data.planless.denylist.report"
+
+	// ManifestScanQuery is the same mistake on the manifest surface: a scan of
+	// the base manifests, which is not the artifact the overlay renders.
+	ManifestScanQuery = "data.planless.manifest_scan.report"
 )
 
 // Config locates the engine, the policy body, and the reviewed allowlist.
@@ -119,7 +123,12 @@ func denial(class, reason string) Decision {
 // A scan that fails to run is an error, not an empty finding list. "It found
 // nothing" is only worth saying when the scan actually ran.
 func Scan(cfg Config, bundle []byte) (ScanReport, error) {
-	raw, err := run(cfg, bundle, ScanQuery)
+	return ScanWith(cfg, bundle, ScanQuery)
+}
+
+// ScanWith runs one named scan over one bundle.
+func ScanWith(cfg Config, bundle []byte, query string) (ScanReport, error) {
+	raw, err := run(cfg, bundle, query)
 	if err != nil {
 		return ScanReport{}, err
 	}
