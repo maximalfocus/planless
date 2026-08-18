@@ -125,11 +125,13 @@ func TestConnectIsRefusedBeforeReachingTheWorkload(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("admin from outside the operations range: got %d want 403", rec.Code)
 	}
-	// From inside the operations range the fabric permits the connect and only
-	// then fails to reach the workload, which is not running in this test.
+	// From inside the operations range the fabric permits the connect and
+	// carries it to the workload. Whether the workload answers depends on
+	// whether it is running, which is not what this test is about: what matters
+	// is that the request was not refused.
 	rec = request(t, s.CorpHandler(), http.MethodGet, adminPath, "10.20.7.40", "", "")
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("admin from the operations range: got %d want 502", rec.Code)
+	if rec.Code == http.StatusForbidden {
+		t.Fatalf("admin from the operations range was refused: %s", rec.Body.String())
 	}
 }
 

@@ -123,6 +123,20 @@ func TestRuntimeSocketIsCaughtAnywhere(t *testing.T) {
 	}
 }
 
+// A container with no network interface at all is stricter than any segment
+// attachment, and must not be reported as unattached.
+func TestNetworkModeNoneIsAccepted(t *testing.T) {
+	cfg := baseConfig()
+	out := svc(cfg, "outside")
+	delete(out, "networks")
+	out["network_mode"] = "none"
+	for _, f := range check(t, cfg) {
+		if f.Rule == "service_is_on_a_declared_segment" || f.Rule == "no_shared_host_namespace" {
+			t.Fatalf("network_mode none was reported: %v", f)
+		}
+	}
+}
+
 func TestUnparsableConfigurationFailsClosed(t *testing.T) {
 	if _, err := Check([]byte("{not json")); err == nil {
 		t.Fatal("expected unparsable configuration to be an error")

@@ -52,6 +52,11 @@ var (
 	corpRole    = role{endpoint: corpEndpoint}
 )
 
+type digestPayload struct {
+	Digest       string `json:"digest"`
+	LedgerDigest string `json:"ledger_digest"`
+}
+
 type step struct {
 	Name     string `json:"name"`
 	Expected string `json:"expected"`
@@ -184,9 +189,7 @@ func stateMatchesFixture() []step {
 	if err != nil {
 		return []step{{Name: "read state digest", Expected: "200", Observed: err.Error()}}
 	}
-	var payload struct {
-		Digest string `json:"digest"`
-	}
+	var payload digestPayload
 	_ = json.Unmarshal(body, &payload)
 	return []step{{
 		Name:     "live platform state equals the checked-in fixture",
@@ -221,29 +224,58 @@ func ledgerRecordsOneChange() []step {
 	if err := json.Unmarshal(body, &st); err != nil {
 		return []step{{Name: "parse platform state", Expected: "parsable", Observed: err.Error()}}
 	}
-	steps := []step{{
-		Name:     "exactly one ledger row records the admin transition",
-		Expected: "1 row: workload.change fare-engine:admin by * from corp (fare-cap=400)",
-		Observed: renderLedger(st.Ledger),
-		Passed: len(st.Ledger) == 1 &&
-			st.Ledger[0].Action == "workload.change" &&
-			st.Ledger[0].Resource == "fare-engine:admin" &&
-			st.Ledger[0].Principal == platform.Anonymous &&
-			st.Ledger[0].Segment == fixtures.SegmentCorp &&
-			st.Ledger[0].Detail == "fare-cap=400",
-	}}
+	var changes []platform.LedgerEntry
+	deployerOnly := true
+	for _, row := range st.Ledger {
+		if row.Action == "workload.change" {
+			changes = append(changes, row)
+			continue
+		}
+		// Everything else in the ledger is infrastructure the deployer applied,
+		// from the corporate segment, within its scope.
+		if row.Principal != fixtures.PrincipalDeployer || row.Segment != fixtures.SegmentCorp {
+			deployerOnly = false
+		}
+	}
+	steps := []step{
+		{
+			Name:     "exactly one ledger row records the admin transition",
+			Expected: "1 row: workload.change fare-engine:admin by * from corp (fare-cap=400)",
+			Observed: renderLedger(changes),
+			Passed: len(changes) == 1 &&
+				changes[0].Resource == "fare-engine:admin" &&
+				changes[0].Principal == platform.Anonymous &&
+				changes[0].Segment == fixtures.SegmentCorp &&
+				changes[0].Detail == "fare-cap=400",
+		},
+		{
+			Name:     "every other ledger row is an infrastructure change by the deployer",
+			Expected: "all remaining rows attributed to " + fixtures.PrincipalDeployer + " from " + fixtures.SegmentCorp,
+			Observed: fmt.Sprintf("%d rows total, %d admin transitions", len(st.Ledger), len(changes)),
+			Passed:   deployerOnly,
+		},
+	}
 
 	dstatus, dbody, err := do(corpRole, http.MethodGet, pathStateDigest, nil)
-	var payload struct {
-		Digest string `json:"digest"`
-	}
+	var payload digestPayload
 	_ = json.Unmarshal(dbody, &payload)
-	steps = append(steps, step{
-		Name:     "platform state digest changed with the mutation",
-		Expected: "digest != " + fixtureDigest,
-		Observed: fmt.Sprintf("status=%d digest=%s err=%v", dstatus, payload.Digest, err),
-		Passed:   err == nil && dstatus == http.StatusOK && payload.Digest != "" && payload.Digest != fixtureDigest,
-	})
+	emptyLedger := canon.Digest([]byte("[]"))
+	steps = append(steps,
+		step{
+			// The admin transition changed the world without changing the
+			// declared infrastructure. That gap is the shape drift takes.
+			Name:     "the configured platform state is unchanged by the transition",
+			Expected: "digest == " + fixtureDigest,
+			Observed: fmt.Sprintf("status=%d digest=%s err=%v", dstatus, payload.Digest, err),
+			Passed:   err == nil && dstatus == http.StatusOK && payload.Digest == fixtureDigest,
+		},
+		step{
+			Name:     "the change ledger digest moved",
+			Expected: "ledger digest != " + emptyLedger,
+			Observed: fmt.Sprintf("ledger_digest=%s", payload.LedgerDigest),
+			Passed:   payload.LedgerDigest != "" && payload.LedgerDigest != emptyLedger,
+		},
+	)
 	return steps
 }
 

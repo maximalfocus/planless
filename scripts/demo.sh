@@ -13,9 +13,10 @@ usage() {
 	cat <<'USAGE'
 usage: scripts/demo.sh <command>
 
-  verify     build, check containment, start the platform, run every check, tear down
+  verify     build, check containment, apply the configuration, run every check, tear down
   build      build the container images
-  up         start the control plane and the fare engine
+  up         start the platform and apply the checked-in configuration
+  apply      run the pipeline against a running platform
   down       stop everything and remove the segments
   state      print live platform state through the control plane's read-only API
   checks     run the observation checks against an already running platform
@@ -42,7 +43,20 @@ go_gate() {
 		fi
 		go vet ./...
 		go test ./...
+		cd provider
+		go vet ./...
+		go test ./...
 	'
+}
+
+offline_init() {
+	step "provider installation and planning, with no network interface at all"
+	$COMPOSE run --rm -T pipeline-offline offline-init
+}
+
+apply() {
+	step "the real toolchain plans and applies the checked-in configuration"
+	$COMPOSE run --rm -T pipeline secure-apply
 }
 
 containment_gate() {
@@ -68,6 +82,7 @@ selfchecks() {
 	$COMPOSE run --rm -T finance selfcheck
 	$COMPOSE run --rm -T ops selfcheck
 	$COMPOSE run --rm -T verifier selfcheck
+	$COMPOSE run --rm -T --entrypoint /usr/local/bin/client pipeline selfcheck
 	$COMPOSE run --rm -T tests go run ./cmd/client selfcheck
 }
 
@@ -81,7 +96,7 @@ checks() {
 	step "from the operations range: the fare engine admin port answers"
 	$COMPOSE run --rm -T ops ops-admin-read
 
-	step "live platform state equals the checked-in fixture"
+	step "the applied platform state equals the checked-in fixture, byte for byte"
 	$COMPOSE run --rm -T verifier state-matches-fixture
 
 	step "the one enumerated admin transition, from the operations range"
@@ -100,15 +115,18 @@ verify)
 	build
 	go_gate
 	containment_gate
+	offline_init
 	up
 	selfchecks
+	apply
 	checks
 	down
 	printf '\n=== planless: every check passed\n'
 	;;
 build) build ;;
-up) build; up ;;
+up) build; up; apply ;;
 down) down ;;
+apply) apply ;;
 checks) checks ;;
 state) state ;;
 *) usage; exit 64 ;;
