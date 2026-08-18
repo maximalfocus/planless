@@ -17,12 +17,14 @@ report() {
 # Patterns that must not appear anywhere: credentials, real account identifiers,
 # real cloud or cluster targets, or a link to anything private.
 #
-# `planless-prd` is listed because a public artifact must never name a private
-# companion repository, and a commit message or branch name would be permanent.
+# The companion pattern matches the shape of a private companion repository name
+# rather than any particular one, because a public artifact must never name a
+# private companion — and a guard that spelled the name out in order to forbid it
+# would publish it just as permanently as a commit message or a branch name.
 # The kubeconfig patterns look for the artifact rather than the word: this
 # project's documentation says out loud that no kubeconfig exists anywhere, and
 # a promise of absence is not an exposure.
-forbidden='AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[baprs]-|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|planless-prd|KUBECONFIG=|current-context:|\.amazonaws\.com|\.blob\.core\.windows\.net|\.googleapis\.com|eks\.amazonaws|AWS_SECRET_ACCESS_KEY|AZURE_CLIENT_SECRET|GOOGLE_APPLICATION_CREDENTIALS'
+forbidden='AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[baprs]-|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|[A-Za-z0-9][A-Za-z0-9_-]*-[Pp][Rr][Dd]|KUBECONFIG=|current-context:|\.amazonaws\.com|\.blob\.core\.windows\.net|\.googleapis\.com|eks\.amazonaws|AWS_SECRET_ACCESS_KEY|AZURE_CLIENT_SECRET|GOOGLE_APPLICATION_CREDENTIALS'
 
 # The working tree, including files that are not tracked yet — a new file is
 # invisible to a tracked-only search until it is staged, and by then it may
