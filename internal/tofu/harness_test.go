@@ -288,3 +288,79 @@ func TestArtifactFieldsAreNeverCollapsed(t *testing.T) {
 		}
 	}
 }
+
+// The vulnerable path needs two separate opt-in actions, and neither alone is
+// enough. Neither can be supplied by the scenario itself.
+func TestVulnerableScenariosNeedBothOptIns(t *testing.T) {
+	vulnerable := Scenarios["vulnerable-ungated"]
+	secure := Scenarios["secure-apply"]
+
+	cases := []struct {
+		surface string
+		ack     string
+		allowed bool
+	}{
+		{SurfaceSecure, "", false},
+		{SurfaceSecure, Acknowledgement, false},
+		{SurfaceVulnerable, "", false},
+		{SurfaceVulnerable, "yes", false},
+		{SurfaceVulnerable, Acknowledgement, true},
+	}
+	for _, tc := range cases {
+		if got := vulnerable.Available(tc.surface, tc.ack); got != tc.allowed {
+			t.Fatalf("surface=%q acknowledgement=%q: available=%t, want %t", tc.surface, tc.ack, got, tc.allowed)
+		}
+		if !secure.Available(tc.surface, tc.ack) {
+			t.Fatalf("a secure scenario became unavailable at surface=%q", tc.surface)
+		}
+	}
+}
+
+// The default surface offers no misconfigured scenario at all, whatever anyone
+// acknowledges.
+func TestDefaultSurfaceOffersNoVulnerableScenario(t *testing.T) {
+	offered := AvailableScenarios(SurfaceSecure, Acknowledgement)
+	for _, name := range offered {
+		if Scenarios[name].Vulnerable {
+			t.Fatalf("the secure surface offers %s", name)
+		}
+	}
+	full := AvailableScenarios(SurfaceVulnerable, Acknowledgement)
+	if len(full) <= len(offered) {
+		t.Fatal("the vulnerable surface offers nothing extra")
+	}
+	vulnerable := 0
+	for _, name := range full {
+		if Scenarios[name].Vulnerable {
+			vulnerable++
+		}
+	}
+	if vulnerable == 0 {
+		t.Fatal("no scenario is marked vulnerable")
+	}
+}
+
+// Everything a vulnerable run produces says what it is.
+func TestVulnerableRunsAreLabelled(t *testing.T) {
+	if VulnerableWarning == "" {
+		t.Fatal("there is no label")
+	}
+	for name, s := range Scenarios {
+		if !s.Vulnerable {
+			continue
+		}
+		if s.VarFile != "vulnerable.tfvars" {
+			t.Fatalf("scenario %s is marked vulnerable but reads %s", name, s.VarFile)
+		}
+	}
+	// A run that lands an exposure must declare that its reconciliation fails.
+	if got := Scenarios["vulnerable-ungated"].ExpectReconciliationOf(); got != VerdictFail {
+		t.Fatalf("the ungated vulnerable run expects reconciliation %s", got)
+	}
+	if got := Scenarios["vulnerable-gated"].ExpectReconciliationOf(); got != VerdictPass {
+		t.Fatalf("the gated vulnerable run expects reconciliation %s", got)
+	}
+	if got := Scenarios["secure-apply"].ExpectReconciliationOf(); got != VerdictPass {
+		t.Fatalf("the secure run expects reconciliation %s", got)
+	}
+}

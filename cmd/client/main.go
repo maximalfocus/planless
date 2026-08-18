@@ -68,11 +68,16 @@ type step struct {
 }
 
 type report struct {
-	Check  string             `json:"check"`
-	Steps  []step             `json:"steps"`
-	Self   []selfcheck.Result `json:"selfcheck,omitempty"`
-	Passed bool               `json:"passed"`
+	Check   string             `json:"check"`
+	Warning string             `json:"warning,omitempty"`
+	Steps   []step             `json:"steps"`
+	Self    []selfcheck.Result `json:"selfcheck,omitempty"`
+	Passed  bool               `json:"passed"`
 }
+
+// vulnerableChecks report against a deliberately misconfigured platform, and
+// everything they produce says so.
+var vulnerableChecks = map[string]bool{"internet-vulnerable-impact": true}
 
 var checks = map[string]func() []step{
 	"internet-secure-baseline":   internetSecureBaseline,
@@ -82,6 +87,9 @@ var checks = map[string]func() []step{
 	"state-matches-fixture":      stateMatchesFixture,
 	"ops-admin-change":           opsAdminChange,
 	"ledger-records-one-change":  ledgerRecordsOneChange,
+	"internet-vulnerable-impact": internetVulnerableImpact,
+	"corp-legitimate-paths":      corpLegitimatePaths,
+	"vulnerable-ledger":          vulnerableLedger,
 }
 
 func main() {
@@ -101,7 +109,11 @@ func main() {
 	if !ok {
 		fail(fmt.Sprintf("unknown check %q; available: %s", name, strings.Join(checkNames(), ", ")))
 	}
-	emit(report{Check: name, Steps: fn()})
+	r := report{Check: name, Steps: fn()}
+	if vulnerableChecks[name] {
+		r.Warning = tofu.VulnerableWarning
+	}
+	emit(r)
 }
 
 // observe records what this client can and cannot reach, without judging any
@@ -238,6 +250,39 @@ func internetReviewedExposure() []step {
 	}
 }
 
+// internetVulnerableImpact is the demonstration's point, observed rather than
+// argued: an anonymous client on the simulated public segment reads a fictional
+// refund export and reaches an admin surface no principal was ever meant to
+// reach.
+//
+// INTENTIONALLY VULNERABLE — local educational material.
+func internetVulnerableImpact() []step {
+	return []step{
+		expectStatusAndBody(outsideRole, http.MethodGet, pathRefundExport, http.StatusOK,
+			canon.Digest(fixtures.RefundsCSV()),
+			"an anonymous client on the public segment retrieves the refund export, byte for byte"),
+		expectStatus(outsideRole, http.MethodGet, pathAdminStatus, http.StatusOK,
+			"the fare engine admin port answers the public segment"),
+		expectStatus(outsideRole, http.MethodPost, pathAdminFareCap, http.StatusOK,
+			"an anonymous caller performs the one enumerated admin transition"),
+	}
+}
+
+// corpLegitimatePaths are the behaviours that must hold in every variant. This
+// is why a misconfiguration like this ships: nothing broke.
+func corpLegitimatePaths() []step {
+	return []step{
+		expectStatusAndBody(financeRole, http.MethodGet, pathRefundExport, http.StatusOK,
+			canon.Digest(fixtures.RefundsCSV()),
+			"the finance principal still reads the refund export from the corporate segment"),
+		expectStatus(financeRole, http.MethodGet, pathFareService, http.StatusOK,
+			"the fare engine service port still answers the corporate segment"),
+		expectStatusAndBody(financeRole, http.MethodGet, pathStatusPage, http.StatusOK,
+			canon.Digest(fixtures.StatusJSON()),
+			"the status page is still readable"),
+	}
+}
+
 func financeCorpRead() []step {
 	return []step{
 		expectStatusAndBody(financeRole, http.MethodGet, pathRefundExport, http.StatusOK,
@@ -363,6 +408,36 @@ func ledgerRecordsOneChange() []step {
 		},
 	)
 	return steps
+}
+
+// vulnerableLedger proves the impact at the platform, not at the probe: exactly
+// one admin transition, attributed to an anonymous caller arriving from the
+// public segment.
+func vulnerableLedger() []step {
+	status, body, err := do(corpRole, http.MethodGet, pathState, nil)
+	if err != nil || status != http.StatusOK {
+		return []step{{Name: "read platform state", Expected: "200", Observed: fmt.Sprintf("status=%d err=%v", status, err)}}
+	}
+	var st platform.State
+	if err := json.Unmarshal(body, &st); err != nil {
+		return []step{{Name: "parse platform state", Expected: "parsable", Observed: err.Error()}}
+	}
+	var changes []platform.LedgerEntry
+	for _, row := range st.Ledger {
+		if row.Action == "workload.change" {
+			changes = append(changes, row)
+		}
+	}
+	return []step{{
+		Name:     "exactly one admin transition, by an anonymous caller from the public segment",
+		Expected: "1 row: workload.change fare-engine:admin by * from internet (fare-cap=400)",
+		Observed: renderLedger(changes),
+		Passed: len(changes) == 1 &&
+			changes[0].Resource == "fare-engine:admin" &&
+			changes[0].Principal == platform.Anonymous &&
+			changes[0].Segment == fixtures.SegmentInternet &&
+			changes[0].Detail == "fare-cap=400",
+	}}
 }
 
 func renderLedger(rows []platform.LedgerEntry) string {

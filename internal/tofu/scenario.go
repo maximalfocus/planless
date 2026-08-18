@@ -1,5 +1,7 @@
 package tofu
 
+import "sort"
+
 // Expected outcomes a scenario declares. The harness asserts the outcome it
 // declared, so a scenario that starts passing for the wrong reason fails.
 const (
@@ -15,6 +17,19 @@ const (
 	BindingModified   = "modified"
 	BindingStale      = "stale"
 )
+
+// VulnerableWarning labels everything the vulnerable path produces.
+const VulnerableWarning = "INTENTIONALLY VULNERABLE — local educational material, not a real platform"
+
+// Surfaces the harness can run on. The vulnerable surface exists only on a
+// service that a non-default Compose profile brings up.
+const (
+	SurfaceSecure     = "secure"
+	SurfaceVulnerable = "vulnerable"
+)
+
+// Acknowledgement is the explicit opt-in a vulnerable run additionally needs.
+const Acknowledgement = "true"
 
 // Scenario is one enumerated pipeline run. Nothing else can be started: there
 // is no free-form configuration, variable file, policy, resource or address
@@ -40,6 +55,16 @@ type Scenario struct {
 	// BreakEngine points the gate at a policy engine that is not there, which
 	// is how "the policy engine errored" is proved to deny.
 	BreakEngine bool
+
+	// ExpectReconciliation is the verdict the reconciliation must reach. A run
+	// that lands an exposure is expected to fail it: that failure is the
+	// demonstration, and a run where it stopped failing would be a regression.
+	ExpectReconciliation string
+
+	// Vulnerable marks a run that applies, or evaluates, a deliberately
+	// misconfigured value set. Such a run needs both opt-ins and everything it
+	// produces is labelled.
+	Vulnerable bool
 
 	SkipApply  bool
 	SkipRemote bool
@@ -148,6 +173,22 @@ var Scenarios = map[string]Scenario{
 		Gated:       true,
 		Expect:      ExpectApplied,
 	},
+	"vulnerable-gated": {
+		ID:          "vulnerable-gated",
+		Description: "the misconfigured value set, with the gate standing on the path to apply",
+		VarFile:     "vulnerable.tfvars",
+		Gated:       true,
+		Vulnerable:  true,
+		Expect:      ExpectRefused,
+	},
+	"vulnerable-ungated": {
+		ID:                   "vulnerable-ungated",
+		Description:          "the misconfigured value set, applied by a path no gate stands on",
+		VarFile:              "vulnerable.tfvars",
+		Vulnerable:           true,
+		Expect:               ExpectApplied,
+		ExpectReconciliation: VerdictFail,
+	},
 	"binding-stale-approval": {
 		ID:          "binding-stale-approval",
 		Description: "an apply attempted with an approval issued for a different run",
@@ -156,6 +197,39 @@ var Scenarios = map[string]Scenario{
 		Binding:     BindingStale,
 		Expect:      ExpectRefused,
 	},
+}
+
+// Available reports whether a scenario may be started here.
+//
+// A vulnerable scenario needs both opt-ins: a surface that only a non-default
+// Compose profile brings up, and an explicit acknowledgement supplied by the
+// operator. Either one alone is not enough, and neither can be supplied by the
+// scenario itself.
+func (s Scenario) Available(surface, acknowledgement string) bool {
+	if !s.Vulnerable {
+		return true
+	}
+	return surface == SurfaceVulnerable && acknowledgement == Acknowledgement
+}
+
+// AvailableScenarios lists what may be started on this surface.
+func AvailableScenarios(surface, acknowledgement string) []string {
+	out := []string{}
+	for name, s := range Scenarios {
+		if s.Available(surface, acknowledgement) {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ExpectReconciliationOf returns the verdict this scenario must reach.
+func (s Scenario) ExpectReconciliationOf() string {
+	if s.ExpectReconciliation == "" {
+		return VerdictPass
+	}
+	return s.ExpectReconciliation
 }
 
 // AllowlistOf returns the reviewed allowlist a scenario is decided against.

@@ -80,11 +80,23 @@ type ObservationSet struct {
 	Observations []Observation `json:"observations"`
 }
 
+// ValueOrigin says where one resolved security-relevant value came from. It is
+// the difference between "this is exposed" and "this is exposed, and here is the
+// file nobody opened".
+type ValueOrigin struct {
+	Resource     string `json:"resource"`
+	Field        string `json:"field"`
+	Origin       string `json:"origin"`
+	Reference    string `json:"reference"`
+	Contributors string `json:"contributors,omitempty"`
+}
+
 // Reconciliation compares what the gate decided against what the public
 // segment can actually reach. A policy decision is not evidence of exposure
 // state, so this is computed from observations and never from a verdict.
 type Reconciliation struct {
 	Verdict           string   `json:"verdict"`
+	Expected          string   `json:"expected_verdict"`
 	Reason            string   `json:"reason"`
 	PubliclyReachable []string `json:"publicly_reachable"`
 	AllowedPublic     []string `json:"allowed_public"`
@@ -96,6 +108,14 @@ type Transcript struct {
 	Scenario      string `json:"scenario"`
 	CorrelationID string `json:"correlation_id"`
 
+	// Warning labels everything a vulnerable run produces.
+	Warning string `json:"warning,omitempty"`
+
+	// ApplicationBuild is the digest the fare engine reports of its own
+	// executable. It is here so "the application is identical across variants"
+	// can be compared rather than asserted.
+	ApplicationBuild string `json:"application_build_digest,omitempty"`
+
 	Stages    []Stage   `json:"stages"`
 	Artifacts Artifacts `json:"artifacts"`
 
@@ -106,6 +126,7 @@ type Transcript struct {
 	StateBefore  string          `json:"platform_state_before"`
 	StateAfter   string          `json:"platform_state_after"`
 	Observations []Observation   `json:"observations"`
+	Provenance   []ValueOrigin   `json:"value_origins"`
 	Reconcile    *Reconciliation `json:"reconciliation,omitempty"`
 
 	Expected string `json:"expected_outcome"`
@@ -126,6 +147,9 @@ func (t *Transcript) Render() string {
 	var b strings.Builder
 	line := func(k, v string) {
 		fmt.Fprintf(&b, "  %-34s %s\n", k, v)
+	}
+	if t.Warning != "" {
+		fmt.Fprintf(&b, "*** %s ***\n\n", t.Warning)
 	}
 	fmt.Fprintf(&b, "scenario %s (%s)\n", t.Scenario, t.CorrelationID)
 
@@ -160,6 +184,7 @@ func (t *Transcript) Render() string {
 	}
 	line("platform state before", or(t.StateBefore))
 	line("platform state after", or(t.StateAfter))
+	line("application build", or(t.ApplicationBuild))
 
 	for _, e := range t.Audit {
 		fmt.Fprintf(&b, "\naudit %s class=%s rule=%s stage=%s correlation=%s\n",
@@ -173,7 +198,20 @@ func (t *Transcript) Render() string {
 		}
 	}
 	if t.Reconcile != nil {
-		fmt.Fprintf(&b, "\nreconciliation %s — %s\n", t.Reconcile.Verdict, t.Reconcile.Reason)
+		note := ""
+		if t.Reconcile.Expected != "" && t.Reconcile.Expected != VerdictPass {
+			note = fmt.Sprintf(" (a %s here is the demonstration)", t.Reconcile.Expected)
+		}
+		fmt.Fprintf(&b, "\nreconciliation %s%s — %s\n", t.Reconcile.Verdict, note, t.Reconcile.Reason)
+	}
+	if t.Decision == nil {
+		fmt.Fprintln(&b, "\nno artifact was evaluated: this pipeline has no policy step")
+	}
+	if len(t.Provenance) > 0 {
+		fmt.Fprintln(&b, "\nwhere the exposure values came from")
+		for _, p := range t.Provenance {
+			line(p.Resource+"."+p.Field, p.Origin+" ("+p.Reference+")")
+		}
 	}
 	fmt.Fprintf(&b, "\nexpected %s, %s\n", t.Expected, passed(t.Passed))
 	if t.Error != "" {

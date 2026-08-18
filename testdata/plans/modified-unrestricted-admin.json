@@ -11,6 +11,11 @@
       "module_calls": {
         "platform": {
           "expressions": {
+            "admin_profile": {
+              "references": [
+                "var.admin_profile"
+              ]
+            },
             "assets_bucket": {
               "references": [
                 "democloud_bucket.status_assets.name",
@@ -181,7 +186,8 @@
                   },
                   "source_ranges": {
                     "references": [
-                      "var.admin_source_ranges"
+                      "var.admin_profiles",
+                      "var.admin_profile"
                     ]
                   },
                   "workload": {
@@ -254,7 +260,8 @@
                     {
                       "bind": {
                         "references": [
-                          "var.admin_bind"
+                          "var.admin_profiles",
+                          "var.admin_profile"
                         ]
                       },
                       "name": {
@@ -274,19 +281,40 @@
               }
             ],
             "variables": {
-              "admin_bind": {
-                "default": "10.20.1.20",
-                "description": "Address the fare engine admin listener binds.",
+              "admin_profile": {
+                "default": "operations-range",
+                "description": "Which admin exposure profile applies.",
                 "type": "string"
               },
-              "admin_source_ranges": {
-                "default": [
-                  "10.20.7.0/24"
-                ],
-                "description": "Source address ranges permitted to reach the fare engine admin port.",
+              "admin_profiles": {
+                "default": {
+                  "operations-range": {
+                    "bind": "10.20.1.20",
+                    "source_ranges": [
+                      "10.20.7.0/24"
+                    ]
+                  },
+                  "shared-host": {
+                    "bind": "0.0.0.0",
+                    "source_ranges": [
+                      "0.0.0.0/1",
+                      "128.0.0.0/1"
+                    ]
+                  }
+                },
+                "description": "Named exposure profiles for the fare engine admin port.",
                 "type": [
-                  "list",
-                  "string"
+                  "map",
+                  [
+                    "object",
+                    {
+                      "bind": "string",
+                      "source_ranges": [
+                        "list",
+                        "string"
+                      ]
+                    }
+                  ]
                 ]
               },
               "assets_bucket": {
@@ -529,6 +557,11 @@
         }
       ],
       "variables": {
+        "admin_profile": {
+          "default": "operations-range",
+          "description": "Which of the module's admin exposure profiles applies.",
+          "type": "string"
+        },
         "assets_reader_sources": {
           "description": "Source address ranges from which the second status asset may be read.",
           "required": true,
@@ -1255,6 +1288,9 @@
   ],
   "terraform_version": "1.12.5",
   "variables": {
+    "admin_profile": {
+      "value": "operations-range"
+    },
     "assets_reader_sources": {
       "value": [
         "10.20.0.0/16"

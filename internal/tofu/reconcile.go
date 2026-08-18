@@ -129,8 +129,9 @@ func Reconcile(cfg Config, r io.Reader) (*Transcript, error) {
 		rec.Reason = "reachable from the public segment with no policy decision permitting it: " +
 			strings.Join(unreviewed, ", ")
 	}
+	rec.Expected = scenario.ExpectReconciliationOf()
 	transcript.Reconcile = rec
-	transcript.Passed = transcript.Passed && rec.Verdict == VerdictPass
+	transcript.Passed = transcript.Passed && rec.Verdict == rec.Expected
 	return transcript, nil
 }
 
@@ -240,6 +241,47 @@ func sameObservations(want, got []Observation) error {
 		if want[i] != got[i] {
 			return fmt.Errorf("reachability changed: %+v became %+v", want[i], got[i])
 		}
+	}
+	return nil
+}
+
+// CompareBuilds requires every transcript on the stream to report the same
+// application build.
+//
+// The application is identical in every variant of this demonstration: no
+// request handler, authorization check or response differs between the secure
+// and the misconfigured platform. This is how that is checked rather than
+// asserted.
+func CompareBuilds(r io.Reader) error {
+	dec := json.NewDecoder(r)
+	first := ""
+	seen := 0
+	for {
+		var t Transcript
+		if err := dec.Decode(&t); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("the input stream could not be read: %w", err)
+		}
+		if t.Document != TranscriptDocument {
+			return fmt.Errorf("the input stream carries an unrecognized document %q", t.Document)
+		}
+		if t.ApplicationBuild == "" {
+			return fmt.Errorf("transcript %s reports no application build", t.Scenario)
+		}
+		seen++
+		if first == "" {
+			first = t.ApplicationBuild
+			continue
+		}
+		if t.ApplicationBuild != first {
+			return fmt.Errorf("the application build changed between variants: %s became %s",
+				first, t.ApplicationBuild)
+		}
+	}
+	if seen < 2 {
+		return fmt.Errorf("comparison needs at least two transcripts, got %d", seen)
 	}
 	return nil
 }

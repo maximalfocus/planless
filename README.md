@@ -8,10 +8,10 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** the secure half of the demonstration is complete. A real toolchain plans, a
-> deny-by-default policy decides the resolved artifact, the approval is bound to the apply by digest,
-> and the legitimate work — including one deliberately public thing — still goes through. The
-> misconfigured variants come next; there are none in the repository yet.
+> **Status:** the demonstration works end to end. The secure pipeline is the default; the two exposure
+> shapes and the ungated path are behind two separate opt-in actions. Still to come: the five
+> gate-failure shapes and drift, the Kubernetes-shaped surface, the negative-control matrix, and the
+> walkthrough.
 
 ## What this slice establishes
 
@@ -148,6 +148,47 @@ enforcement / audit / observations / reconciliation
 
 The transcript exists in two deterministic forms: JSON on standard output, the human-readable form on
 standard error.
+
+## The demonstration
+
+```sh
+ALLOW_VULNERABLE_DEMO=true ./scripts/demo.sh vulnerable
+```
+
+Against a platform in its intended posture, one value set is proposed twice. The gate refuses it. Then
+the same value set is applied by a pipeline path the gate does not stand on, and:
+
+- an anonymous client on the simulated public segment retrieves `rider-refunds-2026-03.csv`, byte for
+  byte;
+- it reaches the fare engine's admin port and performs one enumerated, documented, non-destructive
+  transition, recorded in the platform's change ledger as **an anonymous caller from `internet`**;
+- reconciliation fails honestly, naming the resource, the computed effective exposure and where the
+  value came from;
+- every legitimate corporate path is unaffected, and the application build is byte-identical.
+
+Nothing was broken and nothing was exploited. `validate` passed, the plan was clean, the apply reported
+success. The configuration said the world may read this, and the platform did exactly as it was asked.
+
+Read the value set in `infra/vulnerable.tfvars`. It says `"*"` and `"0.0.0.0/0"` for the export — and
+for the admin surface it says only `shared-host`, a profile name. The addresses that make the admin
+port reachable from every source are in a **module default**, on a page nobody opens. The transcript
+attributes each value to where it came from:
+
+```
+where the exposure values came from
+  grant/grant-fare-exports-finance-read.principals    variable-file (var.export_readers)
+  network_rule/rule-fare-engine-admin.source_ranges   module-default (var.admin_profiles)
+  workload/fare-engine.ports.admin.bind               module-default (var.admin_profiles)
+```
+
+### Two opt-ins, and neither alone is enough
+
+The vulnerable configurations and the ungated path are absent from the default workflow. Starting them
+needs a non-default Compose profile **and** an explicit `ALLOW_VULNERABLE_DEMO=true` acknowledgement:
+the default pipeline offers no misconfigured scenario at all, whatever is acknowledged, and the
+profile-gated one refuses without the acknowledgement. Everything the vulnerable path produces —
+transcript, probe report, log line — is labelled as intentionally vulnerable local educational
+material.
 
 ## The gate is not an obstacle
 

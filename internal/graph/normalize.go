@@ -34,6 +34,12 @@ type planDocument struct {
 	Configuration struct {
 		RootModule configModule `json:"root_module"`
 	} `json:"configuration"`
+	Variables map[string]planVariable `json:"variables"`
+}
+
+// planVariable is a root variable's resolved value for this run.
+type planVariable struct {
+	Value json.RawMessage `json:"value"`
 }
 
 type planModule struct {
@@ -99,7 +105,7 @@ func FromPlan(raw []byte, segments []Segment) (*Graph, error) {
 		UnknownResourceTypes: []string{},
 		UnrecognizedFields:   []string{},
 	}
-	index := newConfigIndex(doc.Configuration.RootModule)
+	index := newConfigIndex(doc.Configuration.RootModule, doc.Variables)
 	unknownTypes := map[string]bool{}
 	unrecognized := map[string]bool{}
 

@@ -224,3 +224,73 @@ func TestReconciliationFailsClosedOnBadInput(t *testing.T) {
 		})
 	}
 }
+
+// The application is identical in every variant. This is how that is compared
+// rather than asserted.
+func TestBuildComparison(t *testing.T) {
+	transcript := func(scenario, build string) string {
+		body, err := json.Marshal(&Transcript{
+			Document: TranscriptDocument, Scenario: scenario, ApplicationBuild: build,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(body) + "\n"
+	}
+	same := transcript("secure-apply", "sha256:aaa") + transcript("vulnerable-ungated", "sha256:aaa")
+	if err := CompareBuilds(strings.NewReader(same)); err != nil {
+		t.Fatalf("identical builds were reported as different: %v", err)
+	}
+
+	changed := transcript("secure-apply", "sha256:aaa") + transcript("vulnerable-ungated", "sha256:bbb")
+	if err := CompareBuilds(strings.NewReader(changed)); err == nil {
+		t.Fatal("a changed application build was not reported")
+	}
+	if err := CompareBuilds(strings.NewReader(transcript("secure-apply", "sha256:aaa"))); err == nil {
+		t.Fatal("a single transcript is not a comparison")
+	}
+	missing := transcript("secure-apply", "") + transcript("vulnerable-ungated", "sha256:aaa")
+	if err := CompareBuilds(strings.NewReader(missing)); err == nil {
+		t.Fatal("a transcript with no reported build should be refused")
+	}
+	if err := CompareBuilds(strings.NewReader(`{"document":"planless.observations"}`)); err == nil {
+		t.Fatal("an unrecognized document should be refused")
+	}
+}
+
+// The reconciliation asserts the verdict the scenario declared, so a run that
+// stops failing is a regression rather than an improvement.
+func TestReconciliationAssertsTheDeclaredVerdict(t *testing.T) {
+	transcript := transcriptFor("vulnerable-ungated")
+	in := stream(t, transcript,
+		observations("internet", map[string]bool{
+			"bucket/status-page":  true,
+			"bucket/fare-exports": true,
+		}),
+		observations("corp", map[string]bool{"bucket/fare-exports": true}),
+	)
+	out, err := Reconcile(config(t), strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Reconcile.Verdict != VerdictFail || out.Reconcile.Expected != VerdictFail {
+		t.Fatalf("got %+v", out.Reconcile)
+	}
+	if !out.Passed {
+		t.Fatal("a vulnerable run whose reconciliation failed as declared should pass its scenario")
+	}
+
+	// The same scenario with nothing exposed is a regression: the demonstration
+	// stopped demonstrating.
+	clean := stream(t, transcriptFor("vulnerable-ungated"),
+		observations("internet", map[string]bool{"bucket/status-page": true}),
+		observations("corp", map[string]bool{"bucket/fare-exports": true}),
+	)
+	out, err = Reconcile(config(t), strings.NewReader(clean))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Passed {
+		t.Fatal("a vulnerable run that exposed nothing must not pass")
+	}
+}

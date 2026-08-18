@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/maximalfocus/planless/internal/canon"
@@ -15,6 +16,9 @@ import (
 
 // Config is resolved from the container image layout, not from user input.
 type Config struct {
+	Surface         string
+	Acknowledgement string
+
 	Tofu      string
 	InfraDir  string
 	WorkDir   string
@@ -35,6 +39,12 @@ type Config struct {
 // error, and the record of a refusal is the most interesting thing this
 // pipeline produces.
 func Run(cfg Config, scenario Scenario) (*Transcript, error) {
+	if !scenario.Available(cfg.Surface, cfg.Acknowledgement) {
+		return nil, fmt.Errorf(
+			"scenario %s is unavailable here: it needs both the non-default compose profile that brings up "+
+				"the vulnerable surface and an explicit ALLOW_VULNERABLE_DEMO=true acknowledgement, and neither "+
+				"alone is enough", scenario.ID)
+	}
 	t := &Transcript{
 		Document:      TranscriptDocument,
 		Scenario:      scenario.ID,
@@ -45,6 +55,10 @@ func Run(cfg Config, scenario Scenario) (*Transcript, error) {
 		Audit:         []AuditEvent{},
 		Observations:  []Observation{},
 		Enforcement:   Enforcement{OperatorResult: ResultRefused},
+		Provenance:    []ValueOrigin{},
+	}
+	if scenario.Vulnerable {
+		t.Warning = VulnerableWarning
 	}
 	t.Artifacts.EvaluatedBy = "nothing"
 
@@ -104,6 +118,11 @@ func Run(cfg Config, scenario Scenario) (*Transcript, error) {
 		if missing := ValuesMissingFromPlan(resolved); len(missing) > 0 {
 			return t, fmt.Errorf("resolved artifact is missing security-relevant values %v", missing)
 		}
+		origins, err := valueOrigins(resolved)
+		if err != nil {
+			return t, err
+		}
+		t.Provenance = origins
 		evaluated = resolved
 	} else {
 		// A refusal rehearsal. The policy is given a checked-in artifact
@@ -234,6 +253,9 @@ func (t *Transcript) finish(cfg Config, scenario Scenario, planPath string) (*Tr
 			return t, err
 		}
 		t.StateAfter = after
+		if build, err := applicationBuild(cfg.StateAPI); err == nil {
+			t.ApplicationBuild = build
+		}
 		if t.Enforcement.Applied {
 			t.Artifacts.AppliedState = after
 		}
@@ -305,6 +327,55 @@ func segments() []graph.Segment {
 		out = append(out, graph.Segment{Name: s.Name, CIDR: s.CIDR})
 	}
 	return out
+}
+
+// valueOrigins reports where every security-relevant resolved value came from.
+func valueOrigins(resolved []byte) ([]ValueOrigin, error) {
+	g, err := graph.FromPlan(resolved, segments())
+	if err != nil {
+		return nil, err
+	}
+	out := []ValueOrigin{}
+	record := func(resource string, prov map[string]graph.Provenance, fields ...string) {
+		for _, field := range fields {
+			p, ok := prov[field]
+			if !ok {
+				continue
+			}
+			v := ValueOrigin{
+				Resource: resource, Field: field,
+				Origin: string(p.Origin), Reference: p.Reference,
+			}
+			for i, c := range p.Contributors {
+				if i > 0 {
+					v.Contributors += ", "
+				}
+				v.Contributors += c.Reference + "=" + string(c.Origin)
+			}
+			out = append(out, v)
+		}
+	}
+	for _, grant := range g.Grants {
+		record("grant/"+grant.ID, grant.Provenance, "principals", "source_ranges")
+	}
+	for _, rule := range g.NetworkRules {
+		record("network_rule/"+rule.ID, rule.Provenance, "source_ranges")
+	}
+	for _, r := range g.Resources {
+		if r.Kind != "workload" {
+			continue
+		}
+		for _, port := range r.Ports {
+			record("workload/"+r.Name, r.Provenance, "ports."+port.Name+".bind")
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Resource != out[j].Resource {
+			return out[i].Resource < out[j].Resource
+		}
+		return out[i].Field < out[j].Field
+	})
+	return out, nil
 }
 
 func stateDigest(api string) (string, error) {

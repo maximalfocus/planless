@@ -24,3 +24,11 @@ jobs:
       # same images, the same container boundary.
       - name: verify
         run: ./scripts/demo.sh verify
+
+      # The intentionally vulnerable demonstration is not part of the default
+      # workflow. It runs here, deliberately acknowledged, because the exposures
+      # it produces are the regressions this project must never lose.
+      - name: vulnerable demonstration
+        env:
+          ALLOW_VULNERABLE_DEMO: "true"
+        run: ./scripts/demo.sh vulnerable
