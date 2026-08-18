@@ -1,0 +1,10 @@
+{
+  "operator": "Halloway Transit Authority",
+  "notice": "This is fictional demonstration data. It is deliberately public.",
+  "published_on": "2026-03-31",
+  "routes": [
+    {"route": "orbital-loop", "status": "normal"},
+    {"route": "harbour-line", "status": "reduced-service"},
+    {"route": "northgate-shuttle", "status": "normal"}
+  ]
+}

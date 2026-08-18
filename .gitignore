@@ -1,0 +1,3 @@
+# Nothing built by the demonstration belongs in the repository. All artifacts
+# live in disposable tmpfs mounts inside containers.
+.DS_Store
