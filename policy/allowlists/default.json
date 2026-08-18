@@ -1,0 +1,38 @@
+{
+  "allowlist": {
+    "name": "default",
+    "reviewed_on": "2026-08-18",
+    "entries": [
+      {
+        "rule": "allow-refund-export-to-finance-from-corp",
+        "kind": "bucket",
+        "name": "fare-exports",
+        "principals": ["finance-reporting"],
+        "sources": ["10.20.0.0/16"],
+        "reason": "the quarterly refund export is read by finance reporting, from inside the corporate segment only"
+      },
+      {
+        "rule": "allow-status-page-public",
+        "kind": "bucket",
+        "name": "status-page",
+        "principals": ["*"],
+        "sources": ["0.0.0.0/0"],
+        "reason": "the operator status page is deliberately public; riders read it from anywhere"
+      },
+      {
+        "rule": "allow-fare-engine-service-from-corp",
+        "kind": "workload_port",
+        "name": "fare-engine:service",
+        "sources": ["10.20.0.0/16"],
+        "reason": "the fare engine serves the corporate segment"
+      },
+      {
+        "rule": "allow-fare-engine-admin-from-operations-range",
+        "kind": "workload_port",
+        "name": "fare-engine:admin",
+        "sources": ["10.20.7.0/24"],
+        "reason": "the admin surface answers the operations range and nothing else"
+      }
+    ]
+  }
+}

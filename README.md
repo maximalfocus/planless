@@ -8,9 +8,10 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** two delivery slices are in. The fictional platform and its two-segment network are
-> built, and a real infrastructure-as-code toolchain now plans and applies the checked-in
-> configuration to it. There is no policy gate and no misconfigured variant in the repository yet.
+> **Status:** the platform, the toolchain, and now the policy contract and the deny-by-default policy
+> are in. The gate is a standalone decision surface: it reads a resolved plan artifact and answers
+> admit or deny. Binding that decision to the apply, and the harness and transcript around it, are the
+> next outcome. There is no misconfigured variant in the repository.
 
 ## What this slice establishes
 
@@ -64,6 +65,37 @@ running it in a container with `network_mode: none`, which has no network interf
 The provider has no configurable attributes. There is no endpoint, host, region, account, project,
 credential or token to set: it talks to one in-network service named by a compile-time constant. Its
 resource surface is exactly five types, and it offers no data sources at all.
+
+## The gate
+
+One policy input contract — a normalized resource graph carrying identity, grants, network rules, bind
+addresses and **provenance** — and one policy body written in the engine's own language. The policy
+never reads a plan, a manifest, or a source file directly, so a second manifest format can arrive later
+without the policy changing.
+
+The policy answers one question: *which principals and which source addresses can actually reach each
+resource, and is that exposure one somebody reviewed and wrote down?* It computes the answer. It never
+matches a field value or a literal string, because the same reachability can be spelled more than one
+way:
+
+| Spelled | Computed |
+|---|---|
+| `source_ranges = ["0.0.0.0/1", "128.0.0.0/1"]` | `0.0.0.0/0` — every address |
+| a separate `democloud_grant` resource naming `*` | the bucket is anonymously readable, though its own definition says nothing |
+| an unrestricted ingress rule on a listener bound to a private address | reachable from that segment only — both halves decide |
+| an unrestricted bind with no ingress rule | reachable by nobody |
+
+Exposure is admitted only when it is covered by an entry in `policy/allowlists/default.json`, and each
+admission names the entry that permitted it. Narrower than the entry is admitted; wider is not.
+
+**It denies by default, and every unfinished path is a denial:** an unfamiliar contract version, an
+empty artifact, an unknown resource type, an unrecognized field, an unparsable source range or bind
+address, an exposure that cannot be computed, a missing or empty allowlist, a policy engine that fails,
+an empty policy bundle, a decision that is missing or malformed. There is deliberately no option,
+severity threshold, or advisory mode that turns any of them into a warning.
+
+Refusal is proved against **checked-in modified plan artifacts** under `testdata/plans/`. No vulnerable
+configuration exists in the repository.
 
 ## The fixtures
 

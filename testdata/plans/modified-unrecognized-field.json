@@ -1,0 +1,967 @@
+{
+  "configuration": {
+    "provider_config": {
+      "democloud": {
+        "full_name": "democloud.example/planless/democloud",
+        "name": "democloud",
+        "version_constraint": "0.1.0"
+      }
+    },
+    "root_module": {
+      "module_calls": {
+        "platform": {
+          "expressions": {
+            "export_bucket": {
+              "references": [
+                "democloud_bucket.fare_exports.name",
+                "democloud_bucket.fare_exports"
+              ]
+            },
+            "export_reader_sources": {
+              "references": [
+                "var.export_reader_sources"
+              ]
+            },
+            "export_readers": {
+              "references": [
+                "var.export_readers"
+              ]
+            },
+            "status_bucket": {
+              "references": [
+                "democloud_bucket.status_page.name",
+                "democloud_bucket.status_page"
+              ]
+            },
+            "status_reader_sources": {
+              "references": [
+                "var.status_reader_sources"
+              ]
+            },
+            "status_readers": {
+              "references": [
+                "var.status_readers"
+              ]
+            }
+          },
+          "module": {
+            "resources": [
+              {
+                "address": "democloud_grant.fare_exports_read",
+                "expressions": {
+                  "actions": {
+                    "constant_value": [
+                      "read"
+                    ]
+                  },
+                  "id": {
+                    "constant_value": "grant-fare-exports-finance-read"
+                  },
+                  "principals": {
+                    "references": [
+                      "var.export_readers"
+                    ]
+                  },
+                  "resource_kind": {
+                    "constant_value": "bucket"
+                  },
+                  "resource_name": {
+                    "references": [
+                      "var.export_bucket"
+                    ]
+                  },
+                  "source_ranges": {
+                    "references": [
+                      "var.export_reader_sources"
+                    ]
+                  }
+                },
+                "mode": "managed",
+                "name": "fare_exports_read",
+                "provider_config_key": "democloud",
+                "schema_version": 0,
+                "type": "democloud_grant"
+              },
+              {
+                "address": "democloud_grant.status_page_read",
+                "expressions": {
+                  "actions": {
+                    "constant_value": [
+                      "read"
+                    ]
+                  },
+                  "id": {
+                    "constant_value": "grant-status-page-public-read"
+                  },
+                  "principals": {
+                    "references": [
+                      "var.status_readers"
+                    ]
+                  },
+                  "resource_kind": {
+                    "constant_value": "bucket"
+                  },
+                  "resource_name": {
+                    "references": [
+                      "var.status_bucket"
+                    ]
+                  },
+                  "source_ranges": {
+                    "references": [
+                      "var.status_reader_sources"
+                    ]
+                  }
+                },
+                "mode": "managed",
+                "name": "status_page_read",
+                "provider_config_key": "democloud",
+                "schema_version": 0,
+                "type": "democloud_grant"
+              },
+              {
+                "address": "democloud_network_rule.fare_engine_admin",
+                "expressions": {
+                  "id": {
+                    "constant_value": "rule-fare-engine-admin"
+                  },
+                  "port": {
+                    "constant_value": "admin"
+                  },
+                  "source_ranges": {
+                    "references": [
+                      "var.admin_source_ranges"
+                    ]
+                  },
+                  "workload": {
+                    "references": [
+                      "democloud_workload.fare_engine.name",
+                      "democloud_workload.fare_engine"
+                    ]
+                  }
+                },
+                "mode": "managed",
+                "name": "fare_engine_admin",
+                "provider_config_key": "democloud",
+                "schema_version": 0,
+                "type": "democloud_network_rule"
+              },
+              {
+                "address": "democloud_network_rule.fare_engine_service",
+                "expressions": {
+                  "id": {
+                    "constant_value": "rule-fare-engine-service"
+                  },
+                  "port": {
+                    "constant_value": "service"
+                  },
+                  "source_ranges": {
+                    "references": [
+                      "var.service_source_ranges"
+                    ]
+                  },
+                  "workload": {
+                    "references": [
+                      "democloud_workload.fare_engine.name",
+                      "democloud_workload.fare_engine"
+                    ]
+                  }
+                },
+                "mode": "managed",
+                "name": "fare_engine_service",
+                "provider_config_key": "democloud",
+                "schema_version": 0,
+                "type": "democloud_network_rule"
+              },
+              {
+                "address": "democloud_workload.fare_engine",
+                "expressions": {
+                  "address": {
+                    "references": [
+                      "var.workload_address"
+                    ]
+                  },
+                  "name": {
+                    "references": [
+                      "var.workload_name"
+                    ]
+                  },
+                  "ports": [
+                    {
+                      "bind": {
+                        "references": [
+                          "var.service_bind"
+                        ]
+                      },
+                      "name": {
+                        "constant_value": "service"
+                      },
+                      "number": {
+                        "constant_value": 8080
+                      }
+                    },
+                    {
+                      "bind": {
+                        "references": [
+                          "var.admin_bind"
+                        ]
+                      },
+                      "name": {
+                        "constant_value": "admin"
+                      },
+                      "number": {
+                        "constant_value": 8081
+                      }
+                    }
+                  ]
+                },
+                "mode": "managed",
+                "name": "fare_engine",
+                "provider_config_key": "democloud",
+                "schema_version": 0,
+                "type": "democloud_workload"
+              }
+            ],
+            "variables": {
+              "admin_bind": {
+                "default": "10.20.1.20",
+                "description": "Address the fare engine admin listener binds.",
+                "type": "string"
+              },
+              "admin_source_ranges": {
+                "default": [
+                  "10.20.7.0/24"
+                ],
+                "description": "Source address ranges permitted to reach the fare engine admin port.",
+                "type": [
+                  "list",
+                  "string"
+                ]
+              },
+              "export_bucket": {
+                "description": "Bucket holding the refund export.",
+                "required": true,
+                "type": "string"
+              },
+              "export_reader_sources": {
+                "description": "Source address ranges from which the refund export may be read.",
+                "required": true,
+                "type": [
+                  "list",
+                  "string"
+                ]
+              },
+              "export_readers": {
+                "description": "Principals admitted to read the refund export.",
+                "required": true,
+                "type": [
+                  "list",
+                  "string"
+                ]
+              },
+              "service_bind": {
+                "default": "10.20.1.20",
+                "description": "Address the fare engine service listener binds.",
+                "type": "string"
+              },
+              "service_source_ranges": {
+                "default": [
+                  "10.20.0.0/16"
+                ],
+                "description": "Source address ranges permitted to reach the fare engine service port.",
+                "type": [
+                  "list",
+                  "string"
+                ]
+              },
+              "status_bucket": {
+                "description": "Bucket holding the public status page.",
+                "required": true,
+                "type": "string"
+              },
+              "status_reader_sources": {
+                "description": "Source address ranges from which the status page may be read.",
+                "required": true,
+                "type": [
+                  "list",
+                  "string"
+                ]
+              },
+              "status_readers": {
+                "description": "Principals admitted to read the status page.",
+                "required": true,
+                "type": [
+                  "list",
+                  "string"
+                ]
+              },
+              "workload_address": {
+                "default": "10.20.1.20",
+                "description": "Address the fare engine runs on.",
+                "type": "string"
+              },
+              "workload_name": {
+                "default": "fare-engine",
+                "description": "Name of the fare engine workload.",
+                "type": "string"
+              }
+            }
+          },
+          "source": "./modules/platform"
+        }
+      },
+      "resources": [
+        {
+          "address": "democloud_bucket.fare_exports",
+          "expressions": {
+            "encrypted": {
+              "constant_value": true
+            },
+            "name": {
+              "constant_value": "fare-exports"
+            }
+          },
+          "mode": "managed",
+          "name": "fare_exports",
+          "provider_config_key": "democloud",
+          "schema_version": 0,
+          "type": "democloud_bucket"
+        },
+        {
+          "address": "democloud_bucket.status_page",
+          "expressions": {
+            "encrypted": {
+              "constant_value": true
+            },
+            "name": {
+              "constant_value": "status-page"
+            }
+          },
+          "mode": "managed",
+          "name": "status_page",
+          "provider_config_key": "democloud",
+          "schema_version": 0,
+          "type": "democloud_bucket"
+        },
+        {
+          "address": "democloud_object.refund_export",
+          "expressions": {
+            "bucket": {
+              "references": [
+                "democloud_bucket.fare_exports.name",
+                "democloud_bucket.fare_exports"
+              ]
+            },
+            "content_base64": {
+              "references": [
+                "path.root"
+              ]
+            },
+            "content_type": {
+              "constant_value": "text/csv"
+            },
+            "key": {
+              "constant_value": "rider-refunds-2026-03.csv"
+            }
+          },
+          "mode": "managed",
+          "name": "refund_export",
+          "provider_config_key": "democloud",
+          "schema_version": 0,
+          "type": "democloud_object"
+        },
+        {
+          "address": "democloud_object.status",
+          "expressions": {
+            "bucket": {
+              "references": [
+                "democloud_bucket.status_page.name",
+                "democloud_bucket.status_page"
+              ]
+            },
+            "content_base64": {
+              "references": [
+                "path.root"
+              ]
+            },
+            "content_type": {
+              "constant_value": "application/json"
+            },
+            "key": {
+              "constant_value": "status.json"
+            }
+          },
+          "mode": "managed",
+          "name": "status",
+          "provider_config_key": "democloud",
+          "schema_version": 0,
+          "type": "democloud_object"
+        }
+      ],
+      "variables": {
+        "export_reader_sources": {
+          "description": "Source address ranges from which the refund export may be read.",
+          "required": true,
+          "type": [
+            "list",
+            "string"
+          ]
+        },
+        "export_readers": {
+          "description": "Principals admitted to read the refund export.",
+          "required": true,
+          "type": [
+            "list",
+            "string"
+          ]
+        },
+        "status_reader_sources": {
+          "description": "Source address ranges from which the status page may be read.",
+          "required": true,
+          "type": [
+            "list",
+            "string"
+          ]
+        },
+        "status_readers": {
+          "description": "Principals admitted to read the status page.",
+          "required": true,
+          "type": [
+            "list",
+            "string"
+          ]
+        }
+      }
+    }
+  },
+  "errored": false,
+  "format_version": "1.2",
+  "planned_values": {
+    "root_module": {
+      "child_modules": [
+        {
+          "address": "module.platform",
+          "resources": [
+            {
+              "address": "module.platform.democloud_grant.fare_exports_read",
+              "mode": "managed",
+              "name": "fare_exports_read",
+              "provider_name": "democloud.example/planless/democloud",
+              "schema_version": 0,
+              "sensitive_values": {
+                "actions": [
+                  false
+                ],
+                "principals": [
+                  false
+                ],
+                "source_ranges": [
+                  false
+                ]
+              },
+              "type": "democloud_grant",
+              "values": {
+                "actions": [
+                  "read"
+                ],
+                "id": "grant-fare-exports-finance-read",
+                "principals": [
+                  "finance-reporting"
+                ],
+                "resource_kind": "bucket",
+                "resource_name": "fare-exports",
+                "source_ranges": [
+                  "10.20.0.0/16"
+                ]
+              }
+            },
+            {
+              "address": "module.platform.democloud_grant.status_page_read",
+              "mode": "managed",
+              "name": "status_page_read",
+              "provider_name": "democloud.example/planless/democloud",
+              "schema_version": 0,
+              "sensitive_values": {
+                "actions": [
+                  false
+                ],
+                "principals": [
+                  false
+                ],
+                "source_ranges": [
+                  false
+                ]
+              },
+              "type": "democloud_grant",
+              "values": {
+                "actions": [
+                  "read"
+                ],
+                "id": "grant-status-page-public-read",
+                "principals": [
+                  "*"
+                ],
+                "resource_kind": "bucket",
+                "resource_name": "status-page",
+                "source_ranges": [
+                  "0.0.0.0/0"
+                ]
+              }
+            },
+            {
+              "address": "module.platform.democloud_network_rule.fare_engine_admin",
+              "mode": "managed",
+              "name": "fare_engine_admin",
+              "provider_name": "democloud.example/planless/democloud",
+              "schema_version": 0,
+              "sensitive_values": {
+                "source_ranges": [
+                  false
+                ]
+              },
+              "type": "democloud_network_rule",
+              "values": {
+                "id": "rule-fare-engine-admin",
+                "port": "admin",
+                "source_ranges": [
+                  "10.20.7.0/24"
+                ],
+                "workload": "fare-engine"
+              }
+            },
+            {
+              "address": "module.platform.democloud_network_rule.fare_engine_service",
+              "mode": "managed",
+              "name": "fare_engine_service",
+              "provider_name": "democloud.example/planless/democloud",
+              "schema_version": 0,
+              "sensitive_values": {
+                "source_ranges": [
+                  false
+                ]
+              },
+              "type": "democloud_network_rule",
+              "values": {
+                "id": "rule-fare-engine-service",
+                "port": "service",
+                "source_ranges": [
+                  "10.20.0.0/16"
+                ],
+                "workload": "fare-engine"
+              }
+            },
+            {
+              "address": "module.platform.democloud_workload.fare_engine",
+              "mode": "managed",
+              "name": "fare_engine",
+              "provider_name": "democloud.example/planless/democloud",
+              "schema_version": 0,
+              "sensitive_values": {
+                "ports": [
+                  {},
+                  {}
+                ]
+              },
+              "type": "democloud_workload",
+              "values": {
+                "address": "10.20.1.20",
+                "name": "fare-engine",
+                "ports": [
+                  {
+                    "bind": "10.20.1.20",
+                    "name": "service",
+                    "number": 8080
+                  },
+                  {
+                    "bind": "10.20.1.20",
+                    "name": "admin",
+                    "number": 8081
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "resources": [
+        {
+          "address": "democloud_bucket.fare_exports",
+          "mode": "managed",
+          "name": "fare_exports",
+          "provider_name": "democloud.example/planless/democloud",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "democloud_bucket",
+          "values": {
+            "encrypted": true,
+            "name": "fare-exports",
+            "public": true
+          }
+        },
+        {
+          "address": "democloud_bucket.status_page",
+          "mode": "managed",
+          "name": "status_page",
+          "provider_name": "democloud.example/planless/democloud",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "democloud_bucket",
+          "values": {
+            "encrypted": true,
+            "name": "status-page"
+          }
+        },
+        {
+          "address": "democloud_object.refund_export",
+          "mode": "managed",
+          "name": "refund_export",
+          "provider_name": "democloud.example/planless/democloud",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "democloud_object",
+          "values": {
+            "bucket": "fare-exports",
+            "content_base64": "cmVmdW5kX2lkLHJpZGVyX3JlZmVyZW5jZSxqb3VybmV5X2RhdGUscm91dGUsZmFyZV9wYWlkX21pbm9yLHJlZnVuZF9taW5vcixyZWFzb24sc2V0dGxlZF9vbgpIVEEtUkYtMjAyNi0wMy0wMDAxLFJJRC00NDcxLDIwMjYtMDMtMDIsb3JiaXRhbC1sb29wLDM0MCwzNDAsc2VydmljZS1zdXNwZW5kZWQsMjAyNi0wMy0wOQpIVEEtUkYtMjAyNi0wMy0wMDAyLFJJRC04MTAyLDIwMjYtMDMtMDQsaGFyYm91ci1saW5lLDI3NSwyNzUsY2FuY2VsbGVkLWRlcGFydHVyZSwyMDI2LTAzLTA5CkhUQS1SRi0yMDI2LTAzLTAwMDMsUklELTIyOTAsMjAyNi0wMy0wNyxvcmJpdGFsLWxvb3AsMzQwLDE3MCxwYXJ0aWFsLWRpdmVyc2lvbiwyMDI2LTAzLTExCkhUQS1SRi0yMDI2LTAzLTAwMDQsUklELTY2MzQsMjAyNi0wMy0xMSxub3J0aGdhdGUtc2h1dHRsZSwxOTAsMTkwLGR1cGxpY2F0ZS1jaGFyZ2UsMjAyNi0wMy0xNgpIVEEtUkYtMjAyNi0wMy0wMDA1LFJJRC0xNTA4LDIwMjYtMDMtMTUsaGFyYm91ci1saW5lLDI3NSwyNzUsc2VydmljZS1zdXNwZW5kZWQsMjAyNi0wMy0yMApIVEEtUkYtMjAyNi0wMy0wMDA2LFJJRC05OTczLDIwMjYtMDMtMTksbm9ydGhnYXRlLXNodXR0bGUsMTkwLDk1LHBhcnRpYWwtZGl2ZXJzaW9uLDIwMjYtMDMtMjQKSFRBLVJGLTIwMjYtMDMtMDAwNyxSSUQtMzM0NSwyMDI2LTAzLTIzLG9yYml0YWwtbG9vcCwzNDAsMzQwLGNhbmNlbGxlZC1kZXBhcnR1cmUsMjAyNi0wMy0yNwpIVEEtUkYtMjAyNi0wMy0wMDA4LFJJRC03NzgxLDIwMjYtMDMtMjgsaGFyYm91ci1saW5lLDI3NSwyNzUsZHVwbGljYXRlLWNoYXJnZSwyMDI2LTAzLTMxCg==",
+            "content_type": "text/csv",
+            "key": "rider-refunds-2026-03.csv"
+          }
+        },
+        {
+          "address": "democloud_object.status",
+          "mode": "managed",
+          "name": "status",
+          "provider_name": "democloud.example/planless/democloud",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "democloud_object",
+          "values": {
+            "bucket": "status-page",
+            "content_base64": "ewogICJvcGVyYXRvciI6ICJIYWxsb3dheSBUcmFuc2l0IEF1dGhvcml0eSIsCiAgIm5vdGljZSI6ICJUaGlzIGlzIGZpY3Rpb25hbCBkZW1vbnN0cmF0aW9uIGRhdGEuIEl0IGlzIGRlbGliZXJhdGVseSBwdWJsaWMuIiwKICAicHVibGlzaGVkX29uIjogIjIwMjYtMDMtMzEiLAogICJyb3V0ZXMiOiBbCiAgICB7InJvdXRlIjogIm9yYml0YWwtbG9vcCIsICJzdGF0dXMiOiAibm9ybWFsIn0sCiAgICB7InJvdXRlIjogImhhcmJvdXItbGluZSIsICJzdGF0dXMiOiAicmVkdWNlZC1zZXJ2aWNlIn0sCiAgICB7InJvdXRlIjogIm5vcnRoZ2F0ZS1zaHV0dGxlIiwgInN0YXR1cyI6ICJub3JtYWwifQogIF0KfQo=",
+            "content_type": "application/json",
+            "key": "status.json"
+          }
+        }
+      ]
+    }
+  },
+  "relevant_attributes": [
+    {
+      "attribute": [
+        "name"
+      ],
+      "resource": "democloud_bucket.fare_exports"
+    },
+    {
+      "attribute": [
+        "name"
+      ],
+      "resource": "democloud_bucket.status_page"
+    },
+    {
+      "attribute": [
+        "name"
+      ],
+      "resource": "module.platform.democloud_workload.fare_engine"
+    }
+  ],
+  "resource_changes": [
+    {
+      "address": "democloud_bucket.fare_exports",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "encrypted": true,
+          "name": "fare-exports"
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "fare_exports",
+      "provider_name": "democloud.example/planless/democloud",
+      "type": "democloud_bucket"
+    },
+    {
+      "address": "democloud_bucket.status_page",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "encrypted": true,
+          "name": "status-page"
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "status_page",
+      "provider_name": "democloud.example/planless/democloud",
+      "type": "democloud_bucket"
+    },
+    {
+      "address": "democloud_object.refund_export",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "bucket": "fare-exports",
+          "content_base64": "cmVmdW5kX2lkLHJpZGVyX3JlZmVyZW5jZSxqb3VybmV5X2RhdGUscm91dGUsZmFyZV9wYWlkX21pbm9yLHJlZnVuZF9taW5vcixyZWFzb24sc2V0dGxlZF9vbgpIVEEtUkYtMjAyNi0wMy0wMDAxLFJJRC00NDcxLDIwMjYtMDMtMDIsb3JiaXRhbC1sb29wLDM0MCwzNDAsc2VydmljZS1zdXNwZW5kZWQsMjAyNi0wMy0wOQpIVEEtUkYtMjAyNi0wMy0wMDAyLFJJRC04MTAyLDIwMjYtMDMtMDQsaGFyYm91ci1saW5lLDI3NSwyNzUsY2FuY2VsbGVkLWRlcGFydHVyZSwyMDI2LTAzLTA5CkhUQS1SRi0yMDI2LTAzLTAwMDMsUklELTIyOTAsMjAyNi0wMy0wNyxvcmJpdGFsLWxvb3AsMzQwLDE3MCxwYXJ0aWFsLWRpdmVyc2lvbiwyMDI2LTAzLTExCkhUQS1SRi0yMDI2LTAzLTAwMDQsUklELTY2MzQsMjAyNi0wMy0xMSxub3J0aGdhdGUtc2h1dHRsZSwxOTAsMTkwLGR1cGxpY2F0ZS1jaGFyZ2UsMjAyNi0wMy0xNgpIVEEtUkYtMjAyNi0wMy0wMDA1LFJJRC0xNTA4LDIwMjYtMDMtMTUsaGFyYm91ci1saW5lLDI3NSwyNzUsc2VydmljZS1zdXNwZW5kZWQsMjAyNi0wMy0yMApIVEEtUkYtMjAyNi0wMy0wMDA2LFJJRC05OTczLDIwMjYtMDMtMTksbm9ydGhnYXRlLXNodXR0bGUsMTkwLDk1LHBhcnRpYWwtZGl2ZXJzaW9uLDIwMjYtMDMtMjQKSFRBLVJGLTIwMjYtMDMtMDAwNyxSSUQtMzM0NSwyMDI2LTAzLTIzLG9yYml0YWwtbG9vcCwzNDAsMzQwLGNhbmNlbGxlZC1kZXBhcnR1cmUsMjAyNi0wMy0yNwpIVEEtUkYtMjAyNi0wMy0wMDA4LFJJRC03NzgxLDIwMjYtMDMtMjgsaGFyYm91ci1saW5lLDI3NSwyNzUsZHVwbGljYXRlLWNoYXJnZSwyMDI2LTAzLTMxCg==",
+          "content_type": "text/csv",
+          "key": "rider-refunds-2026-03.csv"
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "refund_export",
+      "provider_name": "democloud.example/planless/democloud",
+      "type": "democloud_object"
+    },
+    {
+      "address": "democloud_object.status",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "bucket": "status-page",
+          "content_base64": "ewogICJvcGVyYXRvciI6ICJIYWxsb3dheSBUcmFuc2l0IEF1dGhvcml0eSIsCiAgIm5vdGljZSI6ICJUaGlzIGlzIGZpY3Rpb25hbCBkZW1vbnN0cmF0aW9uIGRhdGEuIEl0IGlzIGRlbGliZXJhdGVseSBwdWJsaWMuIiwKICAicHVibGlzaGVkX29uIjogIjIwMjYtMDMtMzEiLAogICJyb3V0ZXMiOiBbCiAgICB7InJvdXRlIjogIm9yYml0YWwtbG9vcCIsICJzdGF0dXMiOiAibm9ybWFsIn0sCiAgICB7InJvdXRlIjogImhhcmJvdXItbGluZSIsICJzdGF0dXMiOiAicmVkdWNlZC1zZXJ2aWNlIn0sCiAgICB7InJvdXRlIjogIm5vcnRoZ2F0ZS1zaHV0dGxlIiwgInN0YXR1cyI6ICJub3JtYWwifQogIF0KfQo=",
+          "content_type": "application/json",
+          "key": "status.json"
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "status",
+      "provider_name": "democloud.example/planless/democloud",
+      "type": "democloud_object"
+    },
+    {
+      "address": "module.platform.democloud_grant.fare_exports_read",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "actions": [
+            "read"
+          ],
+          "id": "grant-fare-exports-finance-read",
+          "principals": [
+            "finance-reporting"
+          ],
+          "resource_kind": "bucket",
+          "resource_name": "fare-exports",
+          "source_ranges": [
+            "10.20.0.0/16"
+          ]
+        },
+        "after_sensitive": {
+          "actions": [
+            false
+          ],
+          "principals": [
+            false
+          ],
+          "source_ranges": [
+            false
+          ]
+        },
+        "after_unknown": {},
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.platform",
+      "name": "fare_exports_read",
+      "provider_name": "democloud.example/planless/democloud",
+      "type": "democloud_grant"
+    },
+    {
+      "address": "module.platform.democloud_grant.status_page_read",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "actions": [
+            "read"
+          ],
+          "id": "grant-status-page-public-read",
+          "principals": [
+            "*"
+          ],
+          "resource_kind": "bucket",
+          "resource_name": "status-page",
+          "source_ranges": [
+            "0.0.0.0/0"
+          ]
+        },
+        "after_sensitive": {
+          "actions": [
+            false
+          ],
+          "principals": [
+            false
+          ],
+          "source_ranges": [
+            false
+          ]
+        },
+        "after_unknown": {},
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.platform",
+      "name": "status_page_read",
+      "provider_name": "democloud.example/planless/democloud",
+      "type": "democloud_grant"
+    },
+    {
+      "address": "module.platform.democloud_network_rule.fare_engine_admin",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "id": "rule-fare-engine-admin",
+          "port": "admin",
+          "source_ranges": [
+            "10.20.7.0/24"
+          ],
+          "workload": "fare-engine"
+        },
+        "after_sensitive": {
+          "source_ranges": [
+            false
+          ]
+        },
+        "after_unknown": {},
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.platform",
+      "name": "fare_engine_admin",
+      "provider_name": "democloud.example/planless/democloud",
+      "type": "democloud_network_rule"
+    },
+    {
+      "address": "module.platform.democloud_network_rule.fare_engine_service",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "id": "rule-fare-engine-service",
+          "port": "service",
+          "source_ranges": [
+            "10.20.0.0/16"
+          ],
+          "workload": "fare-engine"
+        },
+        "after_sensitive": {
+          "source_ranges": [
+            false
+          ]
+        },
+        "after_unknown": {},
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.platform",
+      "name": "fare_engine_service",
+      "provider_name": "democloud.example/planless/democloud",
+      "type": "democloud_network_rule"
+    },
+    {
+      "address": "module.platform.democloud_workload.fare_engine",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "address": "10.20.1.20",
+          "name": "fare-engine",
+          "ports": [
+            {
+              "bind": "10.20.1.20",
+              "name": "service",
+              "number": 8080
+            },
+            {
+              "bind": "10.20.1.20",
+              "name": "admin",
+              "number": 8081
+            }
+          ]
+        },
+        "after_sensitive": {
+          "ports": [
+            {},
+            {}
+          ]
+        },
+        "after_unknown": {
+          "id": true,
+          "ports": [
+            {},
+            {}
+          ]
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.platform",
+      "name": "fare_engine",
+      "provider_name": "democloud.example/planless/democloud",
+      "type": "democloud_workload"
+    }
+  ],
+  "terraform_version": "1.12.5",
+  "variables": {
+    "export_reader_sources": {
+      "value": [
+        "10.20.0.0/16"
+      ]
+    },
+    "export_readers": {
+      "value": [
+        "finance-reporting"
+      ]
+    },
+    "status_reader_sources": {
+      "value": [
+        "0.0.0.0/0"
+      ]
+    },
+    "status_readers": {
+      "value": [
+        "*"
+      ]
+    }
+  }
+}

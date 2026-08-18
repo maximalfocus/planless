@@ -93,6 +93,27 @@ type Stage struct {
 	Output   string `json:"output,omitempty"`
 }
 
+// Plan produces the canonical resolved artifact for one scenario and returns
+// it, without applying anything.
+func Plan(cfg Config, scenario Scenario) ([]byte, error) {
+	t := &Transcript{Scenario: scenario.ID}
+	if err := prepare(cfg); err != nil {
+		return nil, err
+	}
+	if err := t.run(cfg, "init", "-input=false", "-no-color"); err != nil {
+		return nil, err
+	}
+	if err := t.run(cfg, "plan", "-input=false", "-no-color", "-lock=false",
+		"-var-file="+scenario.VarFile, "-out=plan.tfplan"); err != nil {
+		return nil, err
+	}
+	planJSON, err := t.capture(cfg, "show", "-json", "plan.tfplan")
+	if err != nil {
+		return nil, err
+	}
+	return CanonicalPlan(planJSON)
+}
+
 // Run executes one enumerated scenario end to end.
 func Run(cfg Config, scenario Scenario) (*Transcript, error) {
 	t := &Transcript{Scenario: scenario.ID, EvaluatedBy: "nothing: no policy gate exists in this configuration"}
