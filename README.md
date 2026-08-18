@@ -8,9 +8,11 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** the demonstration is complete and can be read as one table. The secure pipeline is the
-> default; everything misconfigured is behind two separate opt-in actions. Still to come: the
-> educational walkthrough and publication.
+> **Status:** the demonstration is complete, documented and can be read as one table. The secure
+> pipeline is the default; everything misconfigured is behind two separate opt-in actions. Still to
+> come: publication.
+>
+> **Start here: [the walkthrough](docs/WALKTHROUGH.md).**
 
 ## What this slice establishes
 
@@ -446,6 +448,9 @@ observed result, and compared by canonical digest. Nothing inspects a container'
 or memory.
 
 ## What this is, in the taxonomy
+
+Rechecked against the authoritative OWASP and MITRE pages on **2026-08-18**. The full posture, with
+links and the reasoning, is in [the walkthrough](docs/WALKTHROUGH.md#8-where-this-sits-in-the-taxonomy).
 
 The class is **Infrastructure-as-Code misconfiguration**, and the claim is deliberately narrow. It is
 checked in as data, and a test fails if it drifts.
