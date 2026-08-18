@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/maximalfocus/planless/internal/gate"
 )
 
 func config(t *testing.T) Config {
@@ -292,5 +294,37 @@ func TestReconciliationAssertsTheDeclaredVerdict(t *testing.T) {
 	}
 	if out.Passed {
 		t.Fatal("a vulnerable run that exposed nothing must not pass")
+	}
+}
+
+// The drift check reports and does not remediate. That is a property of the
+// report itself, and the demonstration depends on it: a check that repaired
+// what it found would hide the gap between the repository and the world.
+func TestDriftReportNeverClaimsToHaveRemediated(t *testing.T) {
+	report := &DriftReport{
+		Document: DriftDocument, ReadFrom: "the control plane's read-only state API",
+		StateDigest: "sha256:aaa", Allowlist: "default.json",
+		DriftDetected: true,
+		Findings: []gate.Violation{{
+			Class: "exposure_not_allowlisted", Resource: "bucket/fare-exports",
+			Exposure: `principals=["*"] sources=["0.0.0.0/0"]`,
+		}},
+	}
+	if report.Remediated {
+		t.Fatal("a drift report must never claim to have remediated anything")
+	}
+	out := report.Render()
+	for _, want := range []string{
+		"drift detected", "bucket/fare-exports", "remediated anything", "false",
+		"the repository may be entirely correct",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the rendered drift report omits %q:\n%s", want, out)
+		}
+	}
+
+	clean := &DriftReport{Document: DriftDocument, StateDigest: "sha256:aaa"}
+	if !strings.Contains(clean.Render(), "no drift") {
+		t.Fatalf("a clean report should say so:\n%s", clean.Render())
 	}
 }

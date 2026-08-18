@@ -45,6 +45,11 @@ type Enforcement struct {
 
 	// Advisory records that the pipeline had a decision and did not obey it.
 	Advisory bool `json:"advisory,omitempty"`
+
+	// OutOfBand records that the change reached the platform by a path the
+	// gate does not stand on. The operator result still says refused, because
+	// on the path the operator used, it was.
+	OutOfBand bool `json:"out_of_band,omitempty"`
 }
 
 // AuditEvent is the structured record of one refusal. It carries a stable
@@ -133,7 +138,10 @@ type Transcript struct {
 	// artifact, so the transcript can show the gap rather than assert it.
 	WouldHaveDecided *gate.Decision `json:"policy_would_have_decided,omitempty"`
 
-	Decision     *gate.Decision  `json:"policy_decision,omitempty"`
+	Decision *gate.Decision `json:"policy_decision,omitempty"`
+
+	// Drift is what a check of live platform state found afterwards.
+	Drift        *DriftReport    `json:"drift,omitempty"`
 	Enforcement  Enforcement     `json:"enforcement"`
 	Audit        []AuditEvent    `json:"audit"`
 	StateBefore  string          `json:"platform_state_before"`
@@ -212,6 +220,10 @@ func (t *Transcript) Render() string {
 	if t.Enforcement.Advisory {
 		line("advisory", "the pipeline had a decision and did not obey it")
 	}
+	if t.Enforcement.OutOfBand {
+		line("out of band", "the review path refused; a second path applied it anyway")
+		line("audit of what landed", "none: no event describes the change that reached the platform")
+	}
 	if t.Enforcement.RefusedAtStage != "" {
 		line("refused at stage", t.Enforcement.RefusedAtStage)
 	}
@@ -229,6 +241,9 @@ func (t *Transcript) Render() string {
 		for _, o := range t.Observations {
 			line(o.Segment+" -> "+o.Resource, reach(o))
 		}
+	}
+	if t.Drift != nil {
+		fmt.Fprintln(&b, "\n"+strings.TrimRight(t.Drift.Render(), "\n"))
 	}
 	if t.Reconcile != nil {
 		note := ""

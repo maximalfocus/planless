@@ -8,10 +8,10 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** the demonstration works end to end, and three of the five gate-failure shapes are in.
-> The secure pipeline is the default; everything misconfigured is behind two separate opt-in actions.
-> Still to come: a gate off the only path and drift, the denylist and its two bypasses, the
-> Kubernetes-shaped surface, the negative-control matrix, and the walkthrough.
+> **Status:** the demonstration works end to end, and four of the five gate-failure shapes are in,
+> along with drift detection. The secure pipeline is the default; everything misconfigured is behind two
+> separate opt-in actions. Still to come: the denylist and its two bypasses, the Kubernetes-shaped
+> surface, the negative-control matrix, and the walkthrough.
 
 ## What this slice establishes
 
@@ -181,7 +181,7 @@ where the exposure values came from
   workload/fare-engine.ports.admin.bind               module-default (var.admin_profiles)
 ```
 
-### Three controls that sound sufficient
+### Four controls that sound sufficient
 
 Each is honestly implemented, genuinely runs, and is defeated. Each is a separate scenario with its own
 evidence line, and each ends in the same reachability from the public segment.
@@ -191,6 +191,7 @@ evidence line, and each ends in the same reachability from the public segment.
 | **no gate at all** | plans and applies with no policy step | baseline: the configuration is applied exactly as written |
 | **scan the source text** | reads the `.tf` resource definitions, completes, reports **zero findings** | the values are not in the resource definitions. They arrive from a variable file and a module default, so they exist only in the resolved plan — which the scan never opened |
 | **report, do not enforce** | reads the *resolved* plan, produces **both** findings correctly, exits zero | a finding without authority is a log line; the apply proceeds unchanged |
+| **guard the review path only** | the enforcing gate blocks, and a second path applies the change anyway | a gate is worth exactly the paths it stands on. The operator is told `DEPLOY_REFUSED`; the platform has the change; no audit event describes what landed |
 
 The second is worth dwelling on, because the scan is not a straw man. Its policy is tested against a
 configuration that *does* spell the exposure in a resource block, and it finds it. Against this
@@ -209,6 +210,34 @@ a policy reading the resolved desired state would have decided deny
   exposure_not_allowlisted  bucket/fare-exports:        principals=["*"] sources=["0.0.0.0/0"]
   exposure_not_allowlisted  workload/fare-engine:admin: sources=["0.0.0.0/0"]
 ```
+
+### Drift, and the fourth control
+
+The out-of-band apply has a twin. Apply a **compliant** configuration through the gate, then change one
+live resource directly at the control plane. The repository is correct. The approved plan is correct.
+The world is not, and nothing re-evaluates it.
+
+That is why drift detection is a necessary fourth control rather than a duplicate of the gate. The
+drift check reads live platform state through the control plane's read-only API, normalizes it into the
+**same** contract, and evaluates it with the **same** policy and allowlist:
+
+```
+drift check
+  read from                      the control plane's read-only state API
+  platform state                 sha256:fe20e7d5…
+  reviewed allowlist             default.json
+  remediated anything            false
+
+drift detected
+  bucket/fare-exports            principals=["*", "finance-reporting"] sources=["0.0.0.0/0"]
+                                 rules=["grant-fare-exports-console-read", "grant-fare-exports-finance-read"]
+
+the repository may be entirely correct. this is what is actually there.
+```
+
+It reports and repairs nothing — and re-applying the configuration does not close this one, because the
+exposure is a resource no configuration describes. Somebody has to act on the report. The demonstration
+does exactly that, as a separate, clearly labelled operator step.
 
 The advisory setting exists only on the misconfigured scenarios. There is no option, environment
 variable or severity threshold that turns the enforcing gate into a reporting one, and a test fails if
