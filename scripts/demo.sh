@@ -20,6 +20,7 @@ usage: scripts/demo.sh <command>
   down       stop everything and remove the segments
   state      print live platform state through the control plane's read-only API
   checks     run the observation checks against an already running platform
+  policy     run the deployment gate over the checked-in plan artifacts
 
 The secure platform is the default. Nothing in this project accepts a cloud
 endpoint, credential, region, account, bucket name, address or manifest.
@@ -43,10 +44,26 @@ go_gate() {
 		fi
 		go vet ./...
 		go test ./...
+		opa fmt --fail --list policy/rego
+		opa test policy/rego
 		cd provider
 		go vet ./...
 		go test ./...
 	'
+}
+
+policy_gate() {
+	step "the deployment gate decides the checked-in plan artifacts"
+	$COMPOSE run --rm -T --entrypoint /usr/local/bin/gate pipeline-offline evaluate \
+		< testdata/plans/secure.json
+	for artifact in testdata/plans/modified-*.json; do
+		printf '\n--- %s must be refused\n' "$artifact"
+		if $COMPOSE run --rm -T --entrypoint /usr/local/bin/gate pipeline-offline evaluate \
+			< "$artifact"; then
+			echo "the gate admitted $artifact" >&2
+			exit 1
+		fi
+	done
 }
 
 offline_init() {
@@ -116,6 +133,7 @@ verify)
 	go_gate
 	containment_gate
 	offline_init
+	policy_gate
 	up
 	selfchecks
 	apply
@@ -127,6 +145,7 @@ build) build ;;
 up) build; up; apply ;;
 down) down ;;
 apply) apply ;;
+policy) policy_gate ;;
 checks) checks ;;
 state) state ;;
 *) usage; exit 64 ;;
