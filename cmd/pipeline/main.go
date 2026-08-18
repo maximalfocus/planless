@@ -24,10 +24,17 @@ func main() {
 		emit(os.Args[2])
 	case len(os.Args) == 2 && os.Args[1] == "reconcile":
 		reconcile()
+	case len(os.Args) == 2 && os.Args[1] == "compare-observations":
+		if err := tofu.CompareObservations(os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, "pipeline:", err)
+			os.Exit(1)
+		}
+		fmt.Println(`{"document":"planless.comparison","identical":true}`)
 	case len(os.Args) == 2:
 		run(os.Args[1])
 	default:
-		fmt.Fprintf(os.Stderr, "usage: pipeline <scenario>|reconcile\navailable scenarios: %s\n", available())
+		fmt.Fprintf(os.Stderr,
+			"usage: pipeline <scenario>|reconcile|compare-observations\navailable scenarios: %s\n", available())
 		os.Exit(64)
 	}
 }

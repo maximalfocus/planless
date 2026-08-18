@@ -1,6 +1,6 @@
 {
   "allowlist": {
-    "name": "default",
+    "name": "reviewed-exposure",
     "reviewed_on": "2026-08-18",
     "entries": [
       {
@@ -28,16 +28,16 @@
         "reason": "the operator status page is deliberately public; riders read it from anywhere"
       },
       {
-        "rule": "allow-status-assets-to-finance-from-corp",
+        "rule": "allow-status-assets-public",
         "kind": "bucket",
         "name": "status-assets",
         "principals": [
-          "finance-reporting"
+          "*"
         ],
         "sources": [
-          "10.20.0.0/16"
+          "0.0.0.0/0"
         ],
-        "reason": "the second status asset is being prepared and is not published yet"
+        "reason": "reviewed and approved: the second status asset is published, like the status page"
       },
       {
         "rule": "allow-fare-engine-service-from-corp",

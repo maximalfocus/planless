@@ -8,6 +8,21 @@ variable "status_bucket" {
   description = "Bucket holding the public status page."
 }
 
+variable "assets_bucket" {
+  type        = string
+  description = "Bucket holding the second status asset."
+}
+
+variable "assets_readers" {
+  type        = list(string)
+  description = "Principals admitted to read the second status asset."
+}
+
+variable "assets_reader_sources" {
+  type        = list(string)
+  description = "Source address ranges from which the second status asset may be read."
+}
+
 variable "export_readers" {
   type        = list(string)
   description = "Principals admitted to read the refund export."

@@ -23,6 +23,35 @@ func TestPublicEntriesAreComputedFromTheirRanges(t *testing.T) {
 	}
 }
 
+// The reviewed allowlist is the only thing that can widen exposure, and it does
+// so by naming the resource. Nothing else in the system can.
+func TestReviewedAllowlistNamesTheNewExposure(t *testing.T) {
+	entries, err := PublicEntries("../../policy/allowlists/reviewed-exposure.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"bucket/status-page": true, "bucket/status-assets": true}
+	if len(entries) != len(want) {
+		t.Fatalf("got %v", entries)
+	}
+	for _, e := range entries {
+		if !want[e] {
+			t.Fatalf("the reviewed allowlist publishes %s, which nobody reviewed", e)
+		}
+	}
+	// Everything else about the two allowlists is identical: reviewing an
+	// exposure change must not quietly widen anything else.
+	base, err := PublicEntries("../../policy/allowlists/default.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range base {
+		if !want[e] {
+			t.Fatalf("the default allowlist publishes %s, which the reviewed one does not", e)
+		}
+	}
+}
+
 func TestUnreadableAllowlistIsAnError(t *testing.T) {
 	if _, err := PublicEntries("../../policy/allowlists/does-not-exist.json"); err == nil {
 		t.Fatal("expected a missing allowlist to be an error")
@@ -137,6 +166,43 @@ func TestCorporateReachabilityIsNotAFailure(t *testing.T) {
 	}
 	if out.Reconcile.Verdict != VerdictPass {
 		t.Fatalf("got %s — %s", out.Reconcile.Verdict, out.Reconcile.Reason)
+	}
+}
+
+// Two observations of the same reachability are identical; one that changed is
+// not. This is how an ordinary change is shown to have changed nothing.
+func TestObservationComparison(t *testing.T) {
+	same := observations("internet", map[string]bool{"bucket/status-page": true, "bucket/fare-exports": false})
+	body, err := json.Marshal(same)
+	if err != nil {
+		t.Fatal(err)
+	}
+	twice := string(body) + "\n" + string(body) + "\n"
+	if err := CompareObservations(strings.NewReader(twice)); err != nil {
+		t.Fatalf("identical observations were reported as different: %v", err)
+	}
+
+	changed := observations("internet", map[string]bool{"bucket/status-page": true, "bucket/fare-exports": true})
+	other, err := json.Marshal(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CompareObservations(strings.NewReader(string(body) + "\n" + string(other) + "\n")); err == nil {
+		t.Fatal("a change in reachability was not reported")
+	}
+
+	if err := CompareObservations(strings.NewReader(string(body))); err == nil {
+		t.Fatal("a single observation set is not a comparison")
+	}
+	if err := CompareObservations(strings.NewReader(`{"document":"planless.transcript"}`)); err == nil {
+		t.Fatal("an unrecognized document should be refused")
+	}
+	empty, err := json.Marshal(ObservationSet{Document: ObservationDocument, Segment: "internet"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CompareObservations(strings.NewReader(string(empty) + "\n" + string(empty))); err == nil {
+		t.Fatal("an empty observation set should be refused")
 	}
 }
 

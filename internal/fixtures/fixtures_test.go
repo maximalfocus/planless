@@ -14,9 +14,10 @@ import (
 // byte-identical platform state, and any change to a fixture has to be a
 // deliberate edit here rather than an accident.
 const (
-	SecureBaselineDigest = "sha256:34dd2a2854bb484370d5b10050f19c2c211a7891fb2d06e7b3654634156c9d72"
+	SecureBaselineDigest = "sha256:e5806527cc17746a7e7d5e1d88f0b2d7d2277b8c90116ddfe0c9c0c768b4a25e"
 	RefundsDigest        = "sha256:ec93c341749acf6d1b134f2baa23c9b0d72a9a99cf9c4e7b33ab98927890e1b0"
 	StatusDigest         = "sha256:b827350682ee1f1ad1391b236f159e0bfe6b605f2f0783936a7adb18e7163061"
+	AssetsDigest         = "sha256:1eea29c9c190622cc6210b5f53bae2fad5ca0db6aaae74e47bcd67f18a3290ee"
 )
 
 func seeded(t *testing.T) *platform.Store {
@@ -47,6 +48,9 @@ func TestSeededStateIsByteIdentical(t *testing.T) {
 	if got := canon.Digest(StatusJSON()); got != StatusDigest {
 		t.Fatalf("status page changed: got %s want %s", got, StatusDigest)
 	}
+	if got := canon.Digest(AssetsJSON()); got != AssetsDigest {
+		t.Fatalf("second status asset changed: got %s want %s", got, AssetsDigest)
+	}
 }
 
 func TestSecureBaselinePosture(t *testing.T) {
@@ -75,6 +79,13 @@ func TestSecureBaselinePosture(t *testing.T) {
 	if public != 1 {
 		t.Fatalf("expected exactly one deliberately public grant, got %d", public)
 	}
+	// The second status asset starts unpublished. Publishing it is the reviewed
+	// exposure change, and it may only happen through an allowlist that names it.
+	for _, b := range st.Buckets {
+		if b.LogRetentionDays != DefaultLogRetentionDays {
+			t.Fatalf("bucket %s starts with an unexpected retention setting", b.Name)
+		}
+	}
 }
 
 // The deployer's scope is identical in every variant and never widens: it may
@@ -100,6 +111,7 @@ func TestDeployerScopeIsMinimal(t *testing.T) {
 	want := []string{
 		platform.KindBucket + "/" + BucketFareExports,
 		platform.KindBucket + "/" + BucketStatusPage,
+		platform.KindBucket + "/" + BucketStatusAssets,
 		platform.KindWorkload + "/" + WorkloadFareEngine,
 	}
 	if len(scoped) != len(want) {
@@ -139,7 +151,7 @@ func TestTopologyInvariants(t *testing.T) {
 // for documentation or private use, so nothing here can collide with, or be
 // mistaken for, a real target.
 func TestFixturesAreConspicuouslyFictional(t *testing.T) {
-	body := string(RefundsCSV()) + string(StatusJSON())
+	body := string(RefundsCSV()) + string(StatusJSON()) + string(AssetsJSON())
 	for _, forbidden := range []string{
 		"amazonaws", "s3.", "azure", "blob.core", "googleapis", "gcp", "cloudfront",
 		"http://", "https://", "arn:", "AKIA", "secret", "token", "password",

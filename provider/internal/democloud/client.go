@@ -40,8 +40,9 @@ func NewClient() *Client {
 // State mirrors the parts of platform state the provider reads back.
 type State struct {
 	Buckets []struct {
-		Name      string `json:"name"`
-		Encrypted bool   `json:"encrypted"`
+		Name             string `json:"name"`
+		Encrypted        bool   `json:"encrypted"`
+		LogRetentionDays int64  `json:"log_retention_days"`
 	} `json:"buckets"`
 	Objects []struct {
 		Bucket        string `json:"bucket"`

@@ -26,13 +26,21 @@ provider "democloud" {
 }
 
 resource "democloud_bucket" "fare_exports" {
-  name      = "fare-exports"
-  encrypted = true
+  name               = "fare-exports"
+  encrypted          = true
+  log_retention_days = var.log_retention_days
 }
 
 resource "democloud_bucket" "status_page" {
-  name      = "status-page"
-  encrypted = true
+  name               = "status-page"
+  encrypted          = true
+  log_retention_days = var.log_retention_days
+}
+
+resource "democloud_bucket" "status_assets" {
+  name               = "status-assets"
+  encrypted          = true
+  log_retention_days = var.log_retention_days
 }
 
 resource "democloud_object" "refund_export" {
@@ -49,16 +57,26 @@ resource "democloud_object" "status" {
   content_base64 = filebase64("${path.root}/data/status.json")
 }
 
+resource "democloud_object" "assets" {
+  bucket         = democloud_bucket.status_assets.name
+  key            = "assets.json"
+  content_type   = "application/json"
+  content_base64 = filebase64("${path.root}/data/assets.json")
+}
+
 module "platform" {
   source = "./modules/platform"
 
   export_bucket = democloud_bucket.fare_exports.name
   status_bucket = democloud_bucket.status_page.name
+  assets_bucket = democloud_bucket.status_assets.name
 
   export_readers        = var.export_readers
   export_reader_sources = var.export_reader_sources
   status_readers        = var.status_readers
   status_reader_sources = var.status_reader_sources
+  assets_readers        = var.assets_readers
+  assets_reader_sources = var.assets_reader_sources
 
   # The fare engine's ingress ranges and bind addresses are not passed here.
   # They resolve from the module's own defaults.

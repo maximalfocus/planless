@@ -31,6 +31,15 @@ resource "democloud_grant" "status_page_read" {
   source_ranges = var.status_reader_sources
 }
 
+resource "democloud_grant" "status_assets_read" {
+  id            = "grant-status-assets-read"
+  resource_kind = "bucket"
+  resource_name = var.assets_bucket
+  principals    = var.assets_readers
+  actions       = ["read"]
+  source_ranges = var.assets_reader_sources
+}
+
 resource "democloud_workload" "fare_engine" {
   name    = var.workload_name
   address = var.workload_address

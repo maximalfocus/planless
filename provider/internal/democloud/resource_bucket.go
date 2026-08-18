@@ -12,9 +12,10 @@ import (
 )
 
 type bucketModel struct {
-	Name      types.String `tfsdk:"name"`
-	Encrypted types.Bool   `tfsdk:"encrypted"`
-	ID        types.String `tfsdk:"id"`
+	Name             types.String `tfsdk:"name"`
+	Encrypted        types.Bool   `tfsdk:"encrypted"`
+	LogRetentionDays types.Int64  `tfsdk:"log_retention_days"`
+	ID               types.String `tfsdk:"id"`
 }
 
 type bucketResource struct{ client *Client }
@@ -38,6 +39,10 @@ func (r *bucketResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"encrypted": schema.BoolAttribute{
 				Required:    true,
 				Description: "Whether stored objects are encrypted at rest.",
+			},
+			"log_retention_days": schema.Int64Attribute{
+				Required:    true,
+				Description: "How long access logs are kept. An operational setting with no bearing on who can reach the bucket.",
 			},
 			"id": schema.StringAttribute{Computed: true, Description: "Bucket identity."},
 		},
@@ -78,6 +83,7 @@ func (r *bucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 	for _, b := range live.Buckets {
 		if b.Name == state.Name.ValueString() {
 			state.Encrypted = types.BoolValue(b.Encrypted)
+			state.LogRetentionDays = types.Int64Value(b.LogRetentionDays)
 			state.ID = types.StringValue(b.Name)
 			resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 			return
@@ -118,8 +124,9 @@ func (r *bucketResource) ImportState(ctx context.Context, req resource.ImportSta
 func (r *bucketResource) apply(m bucketModel) error {
 	return r.client.Put("bucket", map[string]any{
 		"bucket": map[string]any{
-			"name":      m.Name.ValueString(),
-			"encrypted": m.Encrypted.ValueBool(),
+			"name":               m.Name.ValueString(),
+			"encrypted":          m.Encrypted.ValueBool(),
+			"log_retention_days": m.LogRetentionDays.ValueInt64(),
 		},
 	})
 }

@@ -191,3 +191,55 @@ func readStream(r io.Reader) (*Transcript, []Observation, error) {
 	}
 	return transcript, observations, nil
 }
+
+// CompareObservations requires every observation set on the stream to report
+// exactly the same reachability.
+//
+// It is how "this change altered nothing about who can reach what" is proved:
+// not by reading a policy verdict, but by observing the same thing twice and
+// requiring the two observations to be identical.
+func CompareObservations(r io.Reader) error {
+	dec := json.NewDecoder(r)
+	var first []Observation
+	sets := 0
+	for {
+		var set ObservationSet
+		if err := dec.Decode(&set); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("the input stream could not be read: %w", err)
+		}
+		if set.Document != ObservationDocument {
+			return fmt.Errorf("the input stream carries an unrecognized document %q", set.Document)
+		}
+		sets++
+		current := sortObservations(set.Observations)
+		if len(current) == 0 {
+			return errors.New("an observation set reports nothing at all")
+		}
+		if first == nil {
+			first = current
+			continue
+		}
+		if err := sameObservations(first, current); err != nil {
+			return err
+		}
+	}
+	if sets < 2 {
+		return fmt.Errorf("comparison needs at least two observation sets, got %d", sets)
+	}
+	return nil
+}
+
+func sameObservations(want, got []Observation) error {
+	if len(want) != len(got) {
+		return fmt.Errorf("observation sets report %d and %d results", len(want), len(got))
+	}
+	for i := range want {
+		if want[i] != got[i] {
+			return fmt.Errorf("reachability changed: %+v became %+v", want[i], got[i])
+		}
+	}
+	return nil
+}
