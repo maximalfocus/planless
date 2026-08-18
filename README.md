@@ -508,6 +508,18 @@ Where the demonstration models something rather than reproducing it, it says so:
 - Principal identity is asserted by the corporate network and is never honoured on the public edge. It
   is not an authentication protocol, and no credential exists anywhere in this project.
 
+## Licence, contributing, and reporting a problem
+
+`planless` is [MIT licensed](LICENSE). Third-party notices for the tools it fetches at build time are in
+[NOTICE.md](NOTICE.md); nothing is vendored, and no package, container image, provider artifact or policy
+bundle is ever published.
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to verify a change, and what a change has to keep true.
+- [SECURITY.md](SECURITY.md) — the misconfiguration here is intentional and is the product. An
+  **unintended** way for this project to affect anything real is a bug: please report it privately.
+- [docs/EXPOSURE-REVIEW.md](docs/EXPOSURE-REVIEW.md) — what was reviewed before this became readable by
+  strangers, and how.
+
 ## Scope
 
 Out of scope, deliberately and permanently: any real cloud provider, account, cluster, credential,

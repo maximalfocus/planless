@@ -1,0 +1,96 @@
+#!/bin/sh
+# Review every surface a reader of this repository could reach.
+#
+# Publication is one-way: a pull-request ref outlives any history rewrite, so
+# this runs over the whole git history and not only the working tree. It reports
+# and changes nothing.
+set -eu
+
+cd "$(dirname "$0")/.."
+
+status=0
+report() {
+	printf '%-46s %s\n' "$1" "$2"
+	[ "$2" = "clean" ] || status=1
+}
+
+# Patterns that must not appear anywhere: credentials, real account identifiers,
+# real cloud or cluster targets, or a link to anything private.
+#
+# `planless-prd` is listed because a public artifact must never name a private
+# companion repository, and a commit message or branch name would be permanent.
+# The kubeconfig patterns look for the artifact rather than the word: this
+# project's documentation says out loud that no kubeconfig exists anywhere, and
+# a promise of absence is not an exposure.
+forbidden='AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[baprs]-|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|planless-prd|KUBECONFIG=|current-context:|\.amazonaws\.com|\.blob\.core\.windows\.net|\.googleapis\.com|eks\.amazonaws|AWS_SECRET_ACCESS_KEY|AZURE_CLIENT_SECRET|GOOGLE_APPLICATION_CREDENTIALS'
+
+# The working tree, excluding this file's own pattern list.
+if git grep -nIE "$forbidden" -- . ':!scripts/exposure-review.sh' >/tmp/planless-exposure-tree 2>/dev/null; then
+	report "tracked files" "FINDINGS"
+	cat /tmp/planless-exposure-tree
+else
+	report "tracked files" "clean"
+fi
+
+# Every commit message in the history.
+if git log --format='%H %s%n%b' | grep -nIE "$forbidden" >/tmp/planless-exposure-log 2>/dev/null; then
+	report "commit messages" "FINDINGS"
+	cat /tmp/planless-exposure-log
+else
+	report "commit messages" "clean"
+fi
+
+# Every blob ever committed, including on branches that no longer exist.
+if git rev-list --objects --all |
+	git cat-file --batch-check='%(objecttype) %(objectname) %(rest)' |
+	awk '$1 == "blob" { print $2, $3 }' |
+	while read -r oid path; do
+		if git cat-file blob "$oid" 2>/dev/null | grep -qIE "$forbidden"; then
+			case "$path" in
+			scripts/exposure-review.sh) continue ;;
+			esac
+			echo "$path ($oid)"
+		fi
+	done | grep . >/tmp/planless-exposure-blobs 2>/dev/null; then
+	report "every blob in history" "FINDINGS"
+	cat /tmp/planless-exposure-blobs
+else
+	report "every blob in history" "clean"
+fi
+
+# Branch and tag names are permanent provider surfaces too.
+if git for-each-ref --format='%(refname)' | grep -nIE "$forbidden" >/dev/null 2>&1; then
+	report "branch and tag names" "FINDINGS"
+else
+	report "branch and tag names" "clean"
+fi
+
+# No capability that would help against something real.
+#
+# Two places dial or resolve deliberately, and both are named here rather than
+# excluded quietly:
+#
+#   internal/api        the platform's own network fabric, carrying a permitted
+#                       connect to a workload inside the demonstration network
+#   internal/selfcheck  proves that a reserved address does not connect and a
+#                       reserved name does not resolve, which needs it to try
+#
+# Anything else that resolves a name or opens a socket is a capability this
+# project should not have.
+if git grep -nIE 'net\.LookupHost\(|net\.Dial' -- \
+	':!internal/api' ':!internal/selfcheck' ':!*_test.go' >/dev/null 2>&1; then
+	report "no discovery or dialling capability" "FINDINGS"
+	git grep -nIE 'net\.LookupHost\(|net\.Dial' -- \
+		':!internal/api' ':!internal/selfcheck' ':!*_test.go'
+else
+	report "no discovery or dialling capability" "clean"
+fi
+
+rm -f /tmp/planless-exposure-tree /tmp/planless-exposure-log /tmp/planless-exposure-blobs
+
+if [ "$status" -eq 0 ]; then
+	printf '\nexposure review: clean\n'
+else
+	printf '\nexposure review: FINDINGS — see above\n' >&2
+fi
+exit "$status"
