@@ -35,10 +35,15 @@ var Forbidden = []*regexp.Regexp{
 	regexp.MustCompile(`GOOGLE_APPLICATION_CREDENTIALS`),
 }
 
-// PrivateCompanion is the name of a private repository that must never appear
-// in anything published. A commit message, a branch name or a pull-request body
-// naming it could not be taken back.
-var PrivateCompanion = regexp.MustCompile(`planless-prd`)
+// PrivateCompanion matches the shape of a private companion repository name
+// rather than any particular one. A commit message, a branch name or a
+// pull-request body naming such a repository could not be taken back — and
+// neither could a guard that spelled the name out in order to forbid it, which
+// is the mistake this pattern exists to avoid making twice.
+//
+// Matching the shape is also stronger than matching one name: it survives a
+// rename and it catches a sibling nobody remembered to add.
+var PrivateCompanion = regexp.MustCompile(`(?i)\b[a-z0-9][a-z0-9_-]*-prd\b`)
 
 // Finding is one thing that must not be published.
 type Finding struct {

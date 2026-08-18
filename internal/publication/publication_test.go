@@ -33,7 +33,7 @@ func TestTheReviewWouldNoticeOne(t *testing.T) {
 	for name, body := range map[string]string{
 		"key.pem":     "-----BEGIN RSA PRIVATE KEY-----\nabc\n",
 		"env.sh":      "export AWS_SECRET_ACCESS_KEY=abc\n",
-		"notes.md":    "see the planless-prd repository for the rationale\n",
+		"notes.md":    "see the example-prd repository for the rationale\n",
 		"kube.yaml":   "current-context: production\n",
 		"endpoint.tf": "bucket = \"exports.s3.amazonaws.com\"\n",
 	} {
