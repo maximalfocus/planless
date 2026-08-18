@@ -8,10 +8,9 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** the demonstration works end to end, all five gate-failure shapes are in along with drift
-> detection, and a second manifest format is decided by the same policy. The secure pipeline is the
+> **Status:** the demonstration is complete and can be read as one table. The secure pipeline is the
 > default; everything misconfigured is behind two separate opt-in actions. Still to come: the
-> negative-control matrix and the walkthrough.
+> educational walkthrough and publication.
 
 ## What this slice establishes
 
@@ -148,6 +147,53 @@ enforcement / audit / observations / reconciliation
 
 The transcript exists in two deterministic forms: JSON on standard output, the human-readable form on
 standard error.
+
+## The whole thing in one table
+
+```sh
+ALLOW_VULNERABLE_DEMO=true ./scripts/demo.sh compare
+```
+
+Every scenario, from fresh state, in about 80 seconds. Read down the decisions, then across to what a
+client on the public segment could actually reach.
+
+```
+scenario                        artifact evaluated         gate decision  enforcement              applied exposure    reachable from internet         platform state  reconciliation
+------------------------------  -------------------------  -------------  -----------------------  ------------------  ------------------------------  --------------  --------------
+secure-apply                    resolved state             admit          applied                  reviewed only       status-page                     changed         PASS
+refuse-anonymous-export         resolved state             deny           refused                  —                   status-page                     unchanged       PASS
+fail-closed-unparsable          resolved state             deny           refused                  —                   status-page                     unchanged       PASS
+binding-modified-plan           resolved state             admit          refused                  —                   status-page                     unchanged       PASS
+reviewed-exposure               resolved state             admit          applied                  reviewed only       status-assets status-page       changed         PASS
+manifest-intended               resolved state             admit          applied                  reviewed only       status-page                     unchanged       PASS
+vulnerable-ungated              nothing                    none           applied                  fare-exports admin  fare-exports status-page admin  changed         FAIL
+half-fix-source-scan            source text                0 findings     applied                  fare-exports admin  fare-exports status-page admin  changed         FAIL
+half-fix-report-only            resolved state             deny           advisory, applied        fare-exports admin  fare-exports status-page admin  changed         FAIL
+half-fix-denylist               resolved state (literals)  0 findings     applied                  fare-exports admin  fare-exports status-page admin  changed         FAIL
+half-fix-review-path-only       resolved state             deny           refused, applied anyway  fare-exports admin  fare-exports status-page admin  changed         FAIL
+manifest-exposed-ungated        base manifests             0 findings     applied                  fare-exports admin  fare-exports status-page admin  changed         FAIL
+half-fix-drift                  resolved state             admit          applied                  reviewed only       fare-exports status-page        changed         FAIL
+
+reachability is what a client on the internet segment observed, never a policy verdict.
+```
+
+Every `FAIL` row is a control that ran. The last one is the sharpest: the gate **admitted**, the applied
+state was compliant, the exposure is real anyway — because it arrived after the apply, and nothing
+re-evaluates the world.
+
+## Exploring it by hand
+
+The secure pipeline and the control plane are the default services.
+
+```sh
+./scripts/demo.sh up                       # start the platform and apply the intended posture
+./scripts/demo.sh run reviewed-exposure    # run any named secure scenario and read its transcript
+./scripts/demo.sh state                    # compare live platform state against the fixture
+./scripts/demo.sh down
+```
+
+No command anywhere accepts a cloud endpoint, credential, region, account, bucket name, address or
+manifest. Scenario names are the only input, and the list is closed.
 
 ## The demonstration
 

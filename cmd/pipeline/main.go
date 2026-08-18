@@ -58,6 +58,19 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println(`{"document":"planless.comparison","identical":true}`)
+	case len(os.Args) == 2 && os.Args[1] == "compare-table":
+		table, err := tofu.BuildTable(os.Stdin)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "pipeline:", err)
+			os.Exit(2)
+		}
+		body, err := json.Marshal(table)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "pipeline:", err)
+			os.Exit(2)
+		}
+		fmt.Println(string(body))
+		fmt.Fprintln(os.Stderr, table.Render())
 	case len(os.Args) == 2 && os.Args[1] == "compare-application":
 		if err := tofu.CompareApplication(os.Stdin); err != nil {
 			fmt.Fprintln(os.Stderr, "pipeline:", err)
@@ -82,7 +95,7 @@ func main() {
 		fmt.Fprintf(os.Stderr,
 			"usage: pipeline <scenario>|reconcile|drift|remove-undeclared|"+
 				"compare-observations|compare-reachability|compare-application|"+
-				"compare-builds|compare-exposure\n"+
+				"compare-builds|compare-exposure|compare-table\n"+
 				"available scenarios: %s\n", available())
 		os.Exit(64)
 	}

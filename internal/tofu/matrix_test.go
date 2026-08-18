@@ -145,3 +145,69 @@ func clientChecks(t *testing.T) map[string]bool {
 	}
 	return out
 }
+
+// comparisonScenarios are the scenarios the comparison command runs, in the
+// order it runs them. It is written down so a scenario cannot quietly stop
+// appearing in the one view that shows the whole demonstration.
+var comparisonScenarios = []string{
+	"secure-apply",
+	"refuse-anonymous-export",
+	"refuse-unrestricted-admin",
+	"fail-closed-unparsable",
+	"fail-closed-unknown-type",
+	"fail-closed-unrecognized-field",
+	"fail-closed-engine-error",
+	"binding-unapproved-plan",
+	"binding-modified-plan",
+	"binding-stale-approval",
+	"reviewed-exposure-unapproved",
+	"routine-change",
+	"reviewed-exposure",
+	"manifest-intended",
+	"vulnerable-gated",
+	"vulnerable-ungated",
+	"half-fix-source-scan",
+	"half-fix-report-only",
+	"half-fix-denylist",
+	"half-fix-review-path-only",
+	"manifest-exposed",
+	"manifest-exposed-ungated",
+	"half-fix-drift",
+}
+
+// Every scenario appears in the comparison, and the comparison names only
+// scenarios that exist. `offline-init` is the exception: it runs in a container
+// with no network interface, which is the claim it exists to make, and it has
+// no platform to compare against.
+func TestTheComparisonCoversEveryScenario(t *testing.T) {
+	covered := map[string]bool{}
+	for _, name := range comparisonScenarios {
+		if _, ok := Scenarios[name]; !ok {
+			t.Fatalf("the comparison runs %s, which does not exist", name)
+		}
+		if covered[name] {
+			t.Fatalf("the comparison runs %s twice", name)
+		}
+		covered[name] = true
+	}
+	for name := range Scenarios {
+		if name == "offline-init" {
+			continue
+		}
+		if !covered[name] {
+			t.Fatalf("scenario %s never appears in the comparison", name)
+		}
+	}
+
+	// The script has to run the same list.
+	body, err := os.ReadFile("../../scripts/demo.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(body)
+	for _, name := range comparisonScenarios {
+		if !strings.Contains(script, name) {
+			t.Fatalf("the comparison command does not run %s", name)
+		}
+	}
+}
