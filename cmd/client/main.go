@@ -22,6 +22,7 @@ import (
 	"github.com/maximalfocus/planless/internal/fixtures"
 	"github.com/maximalfocus/planless/internal/platform"
 	"github.com/maximalfocus/planless/internal/selfcheck"
+	"github.com/maximalfocus/planless/internal/tofu"
 )
 
 // The only two endpoints that exist. Neither is configurable.
@@ -39,6 +40,7 @@ const (
 	pathAdminFareCap = "/v1/net/fare-engine/admin/admin/fare-cap"
 	pathState        = "/v1/state"
 	pathStateDigest  = "/v1/state/digest"
+	pathWhoami       = "/v1/whoami"
 )
 
 type role struct {
@@ -89,6 +91,10 @@ func main() {
 		runSelfcheck()
 		return
 	}
+	if name == "observe" {
+		observe()
+		return
+	}
 	fn, ok := checks[name]
 	if !ok {
 		fail(fmt.Sprintf("unknown check %q; available: %s", name, strings.Join(checkNames(), ", ")))
@@ -96,8 +102,65 @@ func main() {
 	emit(report{Check: name, Steps: fn()})
 }
 
+// observe records what this client can and cannot reach, without judging any
+// of it. The segment it reports is the one the platform saw the request arrive
+// from, not one the client asserted about itself.
+func observe() {
+	role := outsideRole
+	segment, err := whoami(role)
+	if err != nil || segment != fixtures.SegmentInternet {
+		role = financeRole
+		segment, err = whoami(role)
+		if err != nil {
+			fail("observe: the control plane did not report this client's segment: " + err.Error())
+		}
+	}
+	set := tofu.ObservationSet{
+		Document: tofu.ObservationDocument,
+		Segment:  segment,
+		Observations: []tofu.Observation{
+			observation(role, segment, "bucket/status-page", pathStatusPage),
+			observation(role, segment, "bucket/fare-exports", pathRefundExport),
+			observation(role, segment, "workload/fare-engine:admin", pathAdminStatus),
+			observation(role, segment, "workload/fare-engine:service", pathFareService),
+		},
+	}
+	out, _ := json.Marshal(set)
+	fmt.Println(string(out))
+}
+
+func whoami(ro role) (string, error) {
+	status, body, err := do(ro, http.MethodGet, pathWhoami, nil)
+	if err != nil {
+		return "", err
+	}
+	if status != http.StatusOK {
+		return "", fmt.Errorf("the control plane returned %d", status)
+	}
+	var payload struct {
+		Segment string `json:"segment"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return "", err
+	}
+	return payload.Segment, nil
+}
+
+func observation(ro role, segment, resource, path string) tofu.Observation {
+	status, body, err := do(ro, http.MethodGet, path, nil)
+	o := tofu.Observation{Segment: segment, Resource: resource, Status: status}
+	if err != nil {
+		return o
+	}
+	if status == http.StatusOK {
+		o.Reachable = true
+		o.Digest = canon.Digest(body)
+	}
+	return o
+}
+
 func checkNames() []string {
-	names := []string{"selfcheck"}
+	names := []string{"selfcheck", "observe"}
 	for k := range checks {
 		names = append(names, k)
 	}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os/exec"
 	"time"
 )
 
@@ -36,8 +35,4 @@ func (c *httpClient) stateDigest(base string) (string, error) {
 		return "", errors.New("control plane returned no state digest")
 	}
 	return payload.Digest, nil
-}
-
-func asExitError(err error, target **exec.ExitError) bool {
-	return errors.As(err, target)
 }

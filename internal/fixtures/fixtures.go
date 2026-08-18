@@ -38,6 +38,10 @@ const (
 
 	ControlPlaneCorpAddr = "10.20.1.10"
 	FareEngineAddr       = "10.20.1.20"
+
+	// ProbeAddress is where the public-segment probe client sits. It is used to
+	// ask whether a reviewed exposure actually reaches the public segment.
+	ProbeAddress = "198.51.100.50"
 )
 
 //go:embed data/rider-refunds-2026-03.csv

@@ -57,6 +57,7 @@ func New(store *platform.Store, log *slog.Logger, scenario string) *Server {
 func (s *Server) CorpHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
+	mux.HandleFunc("GET /v1/whoami", s.whoami)
 	mux.HandleFunc("GET /v1/state", s.getState)
 	mux.HandleFunc("GET /v1/state/digest", s.getStateDigest)
 	mux.HandleFunc("GET /v1/storage/{bucket}/{key}", s.getObject)
@@ -71,6 +72,7 @@ func (s *Server) CorpHandler() http.Handler {
 func (s *Server) EdgeHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
+	mux.HandleFunc("GET /v1/whoami", s.whoami)
 	mux.HandleFunc("GET /v1/storage/{bucket}/{key}", s.getObject)
 	mux.HandleFunc("/v1/net/{workload}/{port}/{path...}", s.connect)
 	return s.withCaller(mux, false)
@@ -110,6 +112,16 @@ func (s *Server) withCaller(next http.Handler, allowPrincipal bool) http.Handler
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+// whoami reports the caller as the platform sees it. An observation that says
+// which segment it came from should not be taking the client's word for it.
+func (s *Server) whoami(w http.ResponseWriter, r *http.Request) {
+	c := callerOf(r)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"segment":   c.Segment,
+		"principal": principalOf(c),
+	})
 }
 
 func (s *Server) getState(w http.ResponseWriter, r *http.Request) {
