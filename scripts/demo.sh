@@ -16,6 +16,9 @@ usage: scripts/demo.sh <command>
 
   verify     build, check containment, apply the configuration, run every check, tear down
   vulnerable run the intentionally vulnerable demonstration (needs ALLOW_VULNERABLE_DEMO=true)
+  compare    run every scenario from fresh state and print the comparison table
+             (needs ALLOW_VULNERABLE_DEMO=true)
+  run        run one named secure scenario against a running platform
   build      build the container images
   up         start the platform and apply the checked-in configuration
   apply      run the pipeline against a running platform
@@ -85,7 +88,10 @@ scenario() {
 	wait "$internet_probe"
 	wait "$corp_probe"
 	printf '%s\n' "$transcript" | cat - "$work/internet" "$work/corp" |
-		$COMPOSE exec -T pipeline /usr/local/bin/pipeline reconcile >/dev/null
+		$COMPOSE exec -T pipeline /usr/local/bin/pipeline reconcile >"$work/reconciled"
+	if [ -n "${COMPARISON:-}" ]; then
+		cat "$work/reconciled" >>"$COMPARISON"
+	fi
 	rm -rf "$work"
 	printf '%s\n' "$transcript"
 }
@@ -119,6 +125,87 @@ legitimate() {
 	step "the same exposure change, against a reviewed allowlist that names it"
 	scenario reviewed-exposure
 	$COMPOSE exec -T outside /usr/local/bin/client internet-reviewed-exposure
+}
+
+# The whole demonstration in one view.
+#
+# Every scenario, from fresh state, with what each pipeline evaluated, what the
+# gate decided, whether that decision was enforced, and what a client on the
+# public segment could actually reach afterwards.
+compare() {
+	if [ "${ALLOW_VULNERABLE_DEMO:-}" != "true" ]; then
+		cat >&2 <<'REFUSED'
+The comparison includes the intentionally misconfigured scenarios, so it needs
+the same two opt-in actions the vulnerable demonstration does:
+
+    ALLOW_VULNERABLE_DEMO=true ./scripts/demo.sh compare
+
+REFUSED
+		exit 1
+	fi
+
+	build
+	down
+	up
+	$COMPOSE_ALL up -d vulnerable-pipeline
+
+	COMPARISON="${TMPDIR:-/tmp}/planless-comparison.jsonl"
+	export COMPARISON
+	: >"$COMPARISON"
+
+	step "running every scenario from fresh state"
+	scenario secure-apply >/dev/null
+	for name in \
+		refuse-anonymous-export \
+		refuse-unrestricted-admin \
+		fail-closed-unparsable \
+		fail-closed-unknown-type \
+		fail-closed-unrecognized-field \
+		fail-closed-engine-error \
+		binding-unapproved-plan \
+		binding-modified-plan \
+		binding-stale-approval \
+		reviewed-exposure-unapproved \
+		routine-change; do
+		scenario "$name" >/dev/null
+	done
+
+	# The reviewed exposure change publishes a second asset, so the platform is
+	# returned to its intended posture before anything else is measured.
+	scenario reviewed-exposure >/dev/null
+	quiet_reset
+	scenario manifest-intended >/dev/null
+	quiet_reset
+
+	for name in \
+		vulnerable-gated \
+		vulnerable-ungated \
+		half-fix-source-scan \
+		half-fix-report-only \
+		half-fix-denylist \
+		half-fix-review-path-only \
+		manifest-exposed \
+		manifest-exposed-ungated; do
+		vulnerable_scenario "$name" >/dev/null
+		quiet_reset
+	done
+	vulnerable_scenario half-fix-drift >/dev/null
+	quiet_reset
+
+	step "the comparison"
+	$COMPOSE exec -T pipeline /usr/local/bin/pipeline compare-table <"$COMPARISON" >/dev/null
+	unset COMPARISON
+	down
+}
+
+# quiet_reset returns the platform to its intended posture between measurements
+# without adding a row to the comparison.
+quiet_reset() {
+	(
+		unset COMPARISON
+		$COMPOSE exec -T pipeline /usr/local/bin/pipeline remove-undeclared >/dev/null
+		scenario secure-apply >/dev/null
+	)
 }
 
 # INTENTIONALLY VULNERABLE — local educational material.
@@ -269,7 +356,10 @@ vulnerable_scenario() {
 	# The reconciliation asserts the verdict the scenario declared. A run that
 	# lands an exposure must fail it; a run the gate refused must not.
 	printf '%s\n' "$transcript" | cat - "$work/internet" "$work/corp" |
-		$COMPOSE_ALL exec -T vulnerable-pipeline /usr/local/bin/pipeline reconcile >/dev/null
+		$COMPOSE_ALL exec -T vulnerable-pipeline /usr/local/bin/pipeline reconcile >"$work/reconciled"
+	if [ -n "${COMPARISON:-}" ]; then
+		cat "$work/reconciled" >>"$COMPARISON"
+	fi
 	rm -rf "$work"
 	printf '%s\n' "$transcript"
 }
@@ -383,6 +473,11 @@ down) down ;;
 apply) apply ;;
 policy) policy_gate ;;
 vulnerable) vulnerable ;;
+compare) compare ;;
+run)
+	[ -n "${2:-}" ] || { echo "usage: scripts/demo.sh run <scenario>" >&2; exit 64; }
+	scenario "$2" >/dev/null
+	;;
 refusals) refusals ;;
 paths) legitimate ;;
 manifests) manifest_surface ;;
