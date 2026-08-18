@@ -19,10 +19,20 @@ type Config struct {
 	Surface         string
 	Acknowledgement string
 
-	Tofu      string
-	InfraDir  string
-	WorkDir   string
-	DataDir   string
+	Tofu     string
+	InfraDir string
+
+	// WorkRoot and DataRoot hold one directory per run. The harness container
+	// is long-lived; a run is not, and every one of them starts from an empty
+	// working tree.
+	WorkRoot string
+	DataRoot string
+
+	// WorkDir and DataDir are this run's own directories, created under the
+	// roots above.
+	WorkDir string
+	DataDir string
+
 	TempDir   string
 	CLIConfig string
 	StateAPI  string
@@ -71,6 +81,10 @@ func Run(cfg Config, scenario Scenario) (*Transcript, error) {
 		t.StateAfter = before
 	}
 
+	cfg, err := newRun(cfg)
+	if err != nil {
+		return t, err
+	}
 	if err := prepare(cfg); err != nil {
 		return t, err
 	}

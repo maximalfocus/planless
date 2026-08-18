@@ -14,8 +14,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/maximalfocus/planless/internal/canon"
@@ -109,6 +111,10 @@ func main() {
 		observe()
 		return
 	}
+	if name == "idle" {
+		idle()
+		return
+	}
 	fn, ok := checks[name]
 	if !ok {
 		fail(fmt.Sprintf("unknown check %q; available: %s", name, strings.Join(checkNames(), ", ")))
@@ -178,8 +184,17 @@ func observation(ro role, segment, resource, path string) tofu.Observation {
 	return o
 }
 
+// idle keeps a client container alive so the run can exercise it repeatedly
+// without paying to create one each time. It performs no request, holds no
+// state, and exits on the usual termination signals.
+func idle() {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+}
+
 func checkNames() []string {
-	names := []string{"selfcheck", "observe"}
+	names := []string{"selfcheck", "observe", "idle"}
 	for k := range checks {
 		names = append(names, k)
 	}

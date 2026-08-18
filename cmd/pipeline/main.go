@@ -10,12 +10,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/maximalfocus/planless/internal/tofu"
 )
 
 func main() {
 	switch {
+	case len(os.Args) == 2 && os.Args[1] == "idle":
+		// Keep the harness container alive so the run can exercise it
+		// repeatedly. Every pipeline run still begins from its own empty
+		// working tree.
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+		<-stop
 	case len(os.Args) == 3 && os.Args[1] == "emit":
 		// `emit` prints only the canonical resolved artifact, so the checked-in
 		// policy fixtures can be regenerated from a real plan rather than
@@ -108,8 +117,8 @@ func config() tofu.Config {
 
 		Tofu:         env("PLANLESS_TOFU", "/usr/local/bin/tofu"),
 		InfraDir:     env("PLANLESS_INFRA", "/infra"),
-		WorkDir:      env("PLANLESS_WORK", "/artifacts/work"),
-		DataDir:      env("PLANLESS_TOFU_DATA", "/plugins/data"),
+		WorkRoot:     env("PLANLESS_WORK", "/artifacts"),
+		DataRoot:     env("PLANLESS_TOFU_DATA", "/plugins"),
 		TempDir:      env("PLANLESS_TMP", "/tmp"),
 		CLIConfig:    env("PLANLESS_TOFU_CLI_CONFIG", "/etc/tofurc"),
 		StateAPI:     "http://controlplane:8080",

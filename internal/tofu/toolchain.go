@@ -14,6 +14,25 @@ import (
 	"github.com/maximalfocus/planless/internal/fixtures"
 )
 
+// newRun gives one run its own working tree and its own toolchain data
+// directory, both fresh.
+//
+// The plugin the toolchain installs has to be executable, and the mount that
+// holds plan artifacts deliberately is not, so the two live apart.
+func newRun(cfg Config) (Config, error) {
+	work, err := os.MkdirTemp(cfg.WorkRoot, "run-")
+	if err != nil {
+		return cfg, err
+	}
+	data, err := os.MkdirTemp(cfg.DataRoot, "run-")
+	if err != nil {
+		return cfg, err
+	}
+	cfg.WorkDir = work
+	cfg.DataDir = data
+	return cfg, nil
+}
+
 // prepare materializes the working tree: the checked-in configuration plus the
 // fixture object bytes, which come from the same embedded fixtures the tests
 // pin, so the applied content cannot drift from the checked-in content.
@@ -25,6 +44,8 @@ func prepare(cfg Config) error {
 	if err != nil {
 		return err
 	}
+	// Asserted rather than assumed: a run that inherited a previous run's tree
+	// would silently plan something other than what it was asked to.
 	if len(entries) > 0 {
 		return fmt.Errorf("work directory %s is not empty; every run starts from fresh state", cfg.WorkDir)
 	}
@@ -57,6 +78,10 @@ func prepare(cfg Config) error {
 // regenerated from a real plan rather than written by hand.
 func Plan(cfg Config, scenario Scenario) ([]byte, error) {
 	t := &Transcript{Scenario: scenario.ID}
+	cfg, err := newRun(cfg)
+	if err != nil {
+		return nil, err
+	}
 	if err := prepare(cfg); err != nil {
 		return nil, err
 	}
