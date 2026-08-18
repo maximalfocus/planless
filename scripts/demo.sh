@@ -25,6 +25,7 @@ usage: scripts/demo.sh <command>
   policy     run the deployment gate over the checked-in plan artifacts
   refusals   run every refusal scenario against a running platform
   paths      run the five secure legitimate paths against a running platform
+  manifests  render and apply the Kubernetes-shaped manifest surface
 
 The secure platform is the default. The intentionally vulnerable demonstration
 needs two separate opt-in actions and neither alone is enough.
@@ -93,6 +94,14 @@ apply() {
 	scenario secure-apply
 }
 
+# The Kubernetes-shaped manifest surface: the same policy contract, a different
+# input format.
+manifest_surface() {
+	step "a second manifest format, decided by the same policy with no change to it"
+	scenario manifest-intended >/dev/null
+	$COMPOSE exec -T verifier /usr/local/bin/client state-matches-fixture
+}
+
 # The five legitimate paths. A deny-by-default policy is only worth having if
 # the legitimate work still goes through.
 legitimate() {
@@ -153,6 +162,7 @@ REFUSED
 	vulnerable_scenario vulnerable-ungated >"$VULNERABLE_TRANSCRIPT"
 
 	step "what the public segment can now reach"
+	$COMPOSE exec -T outside /usr/local/bin/client observe >"$IAC_OBSERVATION"
 	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-impact
 
 	step "the platform recorded the anonymous transition"
@@ -197,6 +207,18 @@ REFUSED
 	step "the fix for drift: an operator removes what the check reported"
 	$COMPOSE exec -T pipeline /usr/local/bin/pipeline remove-undeclared
 	$COMPOSE exec -T pipeline /usr/local/bin/pipeline drift >/dev/null
+	restore
+
+	step "the same invariant, a different input format"
+	vulnerable_scenario manifest-exposed >/dev/null
+	$COMPOSE exec -T outside /usr/local/bin/client internet-secure-baseline
+	vulnerable_scenario manifest-exposed-ungated >/dev/null
+	$COMPOSE exec -T outside /usr/local/bin/client internet-vulnerable-reach
+	$COMPOSE exec -T outside /usr/local/bin/client observe >"$MANIFEST_OBSERVATION"
+
+	step "both surfaces expose the same thing to the public segment"
+	cat "$IAC_OBSERVATION" "$MANIFEST_OBSERVATION" |
+		$COMPOSE exec -T pipeline /usr/local/bin/pipeline compare-reachability
 	restore
 
 	step "the application build is identical in both variants"
@@ -316,6 +338,8 @@ state() {
 VULNERABLE_TRANSCRIPT="${TMPDIR:-/tmp}/planless-vulnerable-transcript.json"
 SECURE_TRANSCRIPT="${TMPDIR:-/tmp}/planless-secure-transcript.json"
 DENYLIST_TRANSCRIPT="${TMPDIR:-/tmp}/planless-denylist-transcript.json"
+IAC_OBSERVATION="${TMPDIR:-/tmp}/planless-iac-observation.json"
+MANIFEST_OBSERVATION="${TMPDIR:-/tmp}/planless-manifest-observation.json"
 
 case "${1:-}" in
 verify)
@@ -331,6 +355,7 @@ verify)
 	refusals
 	apply
 	checks
+	manifest_surface
 	legitimate
 	down
 	printf '\n=== planless: every check passed\n'
@@ -343,6 +368,7 @@ policy) policy_gate ;;
 vulnerable) vulnerable ;;
 refusals) refusals ;;
 paths) legitimate ;;
+manifests) manifest_surface ;;
 checks) checks ;;
 state) state ;;
 *) usage; exit 64 ;;

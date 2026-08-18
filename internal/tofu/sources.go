@@ -162,7 +162,10 @@ func ValuesMissingFromPlan(planJSON []byte) []string {
 // rather than one spelling of them.
 type SourceFile struct {
 	Path           string   `json:"path"`
-	ResourceBlocks []string `json:"resource_blocks"`
+	ResourceBlocks []string `json:"resource_blocks,omitempty"`
+
+	// Text is the file as written, which is what a scan of manifests reads.
+	Text string `json:"text,omitempty"`
 }
 
 // SourceBundle is the input a source-configuration scan reads.

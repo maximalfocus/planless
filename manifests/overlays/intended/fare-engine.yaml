@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fare-engine
+spec:
+  template:
+    spec:
+      containers:
+        - name: fare-engine
+          ports:
+            - name: service
+              containerPort: 8080
+              hostIP: 10.20.1.20
+            - name: admin
+              containerPort: 8081
+              hostIP: 10.20.1.20

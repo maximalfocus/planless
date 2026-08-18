@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fare-engine
+  annotations:
+    democloud.example/workload: fare-engine
+    democloud.example/address: 10.20.1.20
+spec:
+  replicas: 1
+  template:
+    spec:
+      hostNetwork: false
+      containers:
+        - name: fare-engine
+          ports:
+            - name: service
+              containerPort: 8080
+              hostIP: placeholder
+            - name: admin
+              containerPort: 8081
+              hostIP: placeholder

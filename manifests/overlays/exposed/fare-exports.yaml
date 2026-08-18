@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fare-exports
+  annotations:
+    democloud.example/readers: "*"
+    democloud.example/reader-sources: 0.0.0.0/0
+spec:
+  type: LoadBalancer

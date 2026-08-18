@@ -1,0 +1,15 @@
+# The operator status page, deliberately public in every variant.
+apiVersion: v1
+kind: Service
+metadata:
+  name: status-page
+  annotations:
+    democloud.example/bucket: status-page
+    democloud.example/grant: grant-status-page-public-read
+    democloud.example/readers: placeholder
+    democloud.example/reader-sources: placeholder
+spec:
+  type: LoadBalancer
+  ports:
+    - name: storage
+      port: 8080

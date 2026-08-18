@@ -58,6 +58,12 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println(`{"document":"planless.comparison","identical":true}`)
+	case len(os.Args) == 2 && os.Args[1] == "compare-reachability":
+		if err := tofu.CompareReachability(os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, "pipeline:", err)
+			os.Exit(1)
+		}
+		fmt.Println(`{"document":"planless.comparison","identical_reachability_from_the_public_segment":true}`)
 	case len(os.Args) == 2 && os.Args[1] == "compare-observations":
 		if err := tofu.CompareObservations(os.Stdin); err != nil {
 			fmt.Fprintln(os.Stderr, "pipeline:", err)
@@ -69,7 +75,7 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr,
 			"usage: pipeline <scenario>|reconcile|drift|remove-undeclared|"+
-				"compare-observations|compare-builds|compare-exposure\n"+
+				"compare-observations|compare-reachability|compare-builds|compare-exposure\n"+
 				"available scenarios: %s\n", available())
 		os.Exit(64)
 	}
@@ -165,6 +171,8 @@ func config() tofu.Config {
 		CLIConfig:    env("PLANLESS_TOFU_CLI_CONFIG", "/etc/tofurc"),
 		StateAPI:     "http://controlplane:8080",
 		OPA:          env("PLANLESS_OPA", "/usr/local/bin/opa"),
+		Kustomize:    env("PLANLESS_KUSTOMIZE", "/usr/local/bin/kustomize"),
+		ManifestDir:  env("PLANLESS_MANIFESTS", "/manifests"),
 		PolicyDir:    env("PLANLESS_POLICY", "/policy/rego"),
 		AllowlistDir: env("PLANLESS_ALLOWLISTS", "/policy/allowlists"),
 		ArtifactDir:  env("PLANLESS_ARTIFACTS", "/testdata/plans"),

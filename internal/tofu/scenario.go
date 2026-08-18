@@ -69,6 +69,12 @@ type Scenario struct {
 	// configuration files: an honest control over the wrong artifact.
 	Scan bool
 
+	// Manifest names the overlay of the Kubernetes-shaped manifest surface this
+	// scenario renders. The manifests are manifest-shaped input to this
+	// demonstration's own applier: no Kubernetes distribution, API server,
+	// admission controller or kubelet is implemented or emulated anywhere.
+	Manifest string
+
 	// Denylist runs the literal-matching rules over the resolved plan instead
 	// of the deny-by-default policy. A denylist that matches nothing cannot
 	// stop anything, so the pipeline carries on.
@@ -230,6 +236,33 @@ var Scenarios = map[string]Scenario{
 		VarFile:              "vulnerable.tfvars",
 		Gated:                true,
 		Advisory:             true,
+		Vulnerable:           true,
+		Expect:               ExpectApplied,
+		ExpectReconciliation: VerdictFail,
+	},
+	"manifest-intended": {
+		ID:          "manifest-intended",
+		Description: "the intended posture, rendered from manifests and decided by the same policy",
+		VarFile:     "secure.tfvars",
+		Manifest:    "intended",
+		Gated:       true,
+		Expect:      ExpectApplied,
+	},
+	"manifest-exposed": {
+		ID:          "manifest-exposed",
+		Description: "the exposed overlay, refused by the same policy with no change to it",
+		VarFile:     "secure.tfvars",
+		Manifest:    "exposed",
+		Gated:       true,
+		Vulnerable:  true,
+		Expect:      ExpectRefused,
+	},
+	"manifest-exposed-ungated": {
+		ID:                   "manifest-exposed-ungated",
+		Description:          "the exposed overlay applied with no policy step, and a scan of the base that finds nothing",
+		VarFile:              "secure.tfvars",
+		Manifest:             "exposed",
+		Scan:                 true,
 		Vulnerable:           true,
 		Expect:               ExpectApplied,
 		ExpectReconciliation: VerdictFail,

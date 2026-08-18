@@ -353,7 +353,9 @@ func TestVulnerableRunsAreLabelled(t *testing.T) {
 		if !s.Vulnerable {
 			continue
 		}
-		misconfigured := s.VarFile == "vulnerable.tfvars" || s.VarFile == "denylist.tfvars"
+		misconfigured := s.VarFile == "vulnerable.tfvars" ||
+			s.VarFile == "denylist.tfvars" ||
+			s.Manifest == "exposed"
 		if !misconfigured && !s.DriftMutation {
 			t.Fatalf("scenario %s is marked vulnerable but neither reads a misconfigured value set "+
 				"nor changes the platform directly", name)

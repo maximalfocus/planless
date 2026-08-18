@@ -1,0 +1,12 @@
+# The base manifest set.
+#
+# Read it the way a reviewer would. Every security-relevant value here is a
+# placeholder that an overlay replaces, exactly as the infrastructure surface
+# resolves its values from a variable file and a module default. A scan of these
+# files finds nothing, and is right about what it read.
+resources:
+  - service-fare-exports.yaml
+  - service-status-page.yaml
+  - deployment-fare-engine.yaml
+  - networkpolicy-fare-engine-admin.yaml
+  - networkpolicy-fare-engine-service.yaml

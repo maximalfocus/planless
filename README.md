@@ -8,10 +8,10 @@ Everything here is fictional, local, and container-only. The project contacts no
 cluster, account or real API, and it accepts no endpoint, credential, region, bucket name, address or
 manifest from anyone.
 
-> **Status:** the demonstration works end to end, and all five gate-failure shapes are in, along with
-> drift detection. The secure pipeline is the default; everything misconfigured is behind two separate
-> opt-in actions. Still to come: the Kubernetes-shaped surface, the negative-control matrix, and the
-> walkthrough.
+> **Status:** the demonstration works end to end, all five gate-failure shapes are in along with drift
+> detection, and a second manifest format is decided by the same policy. The secure pipeline is the
+> default; everything misconfigured is behind two separate opt-in actions. Still to come: the
+> negative-control matrix and the walkthrough.
 
 ## What this slice establishes
 
@@ -289,6 +289,47 @@ the default pipeline offers no misconfigured scenario at all, whatever is acknow
 profile-gated one refuses without the acknowledgement. Everything the vulnerable path produces —
 transcript, probe report, log line — is labelled as intentionally vulnerable local educational
 material.
+
+## One policy contract, two formats
+
+The invariant is not about a format, so there is a second one: a Kubernetes-**shaped** manifest set, a
+base plus overlays, rendered by a real, pinned, offline renderer.
+
+### What this is not
+
+**No Kubernetes distribution, API server, admission controller or kubelet is implemented or emulated
+anywhere in this project. There is no cluster of any kind. Nothing here describes how real Kubernetes
+behaves, and no claim about it is made or implied.** These are manifest-shaped inputs to this
+demonstration's own applier. The semantics that decide an exposure come from this project's own
+`democloud.example/…` annotations, so no decision rests on an assertion about what a real cluster would
+do with a field.
+
+### What it demonstrates
+
+The rendered set is normalized into the **same** policy contract and decided by the **unmodified**
+policy body and allowlist. Nothing about the policy changes for the second format; a test compares the
+two contracts field by field in both directions, and would fail if they ever diverged.
+
+| Scenario | Result |
+|---|---|
+| `manifest-intended` | admitted — and the platform state digest afterwards is **identical** to the one the infrastructure surface produced |
+| `manifest-exposed` | refused by the same policy, platform state unchanged |
+| `manifest-exposed-ungated` | applied with no policy step, and the public segment can reach exactly what the infrastructure surface exposed |
+
+That last equality is compared rather than asserted:
+
+```
+{"document":"planless.comparison","identical_reachability_from_the_public_segment":true}
+```
+
+And the surface carries its own version of the resolved-artifact lesson: a scan of the **base**
+manifests reports zero findings, while the **rendered** overlay contains both exposures. The base holds
+placeholders; the values arrive when the overlay is rendered. A variable file, a module default, an
+overlay — the shape of the mistake is the same in every format.
+
+The rendered YAML is parsed by the policy engine's own reader rather than by something written here. A
+demonstration about a control that misread its artifact should not hand-roll a parser for the artifact
+it is about to make claims about.
 
 ## The gate is not an obstacle
 

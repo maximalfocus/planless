@@ -1,0 +1,18 @@
+# The published surface of the quarterly refund export.
+#
+# The annotations carry this demonstration's own semantics. Nothing here rests
+# on a claim about what a real cluster would do with a field.
+apiVersion: v1
+kind: Service
+metadata:
+  name: fare-exports
+  annotations:
+    democloud.example/bucket: fare-exports
+    democloud.example/grant: grant-fare-exports-finance-read
+    democloud.example/readers: placeholder
+    democloud.example/reader-sources: placeholder
+spec:
+  type: ClusterIP
+  ports:
+    - name: storage
+      port: 8080

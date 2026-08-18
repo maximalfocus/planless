@@ -38,6 +38,8 @@ type Config struct {
 	StateAPI  string
 
 	OPA          string
+	Kustomize    string
+	ManifestDir  string
 	PolicyDir    string
 	AllowlistDir string
 	ArtifactDir  string
@@ -79,6 +81,12 @@ func Run(cfg Config, scenario Scenario) (*Transcript, error) {
 		}
 		t.StateBefore = before
 		t.StateAfter = before
+	}
+
+	// The manifest surface has its own pipeline: a real overlay render instead
+	// of a plan, decided by the same policy body and allowlist.
+	if scenario.Manifest != "" {
+		return t.runManifest(cfg, scenario)
 	}
 
 	cfg, err := newRun(cfg)
@@ -405,6 +413,10 @@ func (t *Transcript) assert(scenario Scenario) bool {
 			// refused the very same run.
 			return t.Scan != nil && t.Scan.FindingCount == 0 &&
 				t.WouldHaveDecided != nil && t.WouldHaveDecided.Denied()
+		}
+		if scenario.Manifest != "" {
+			// The rendered set was decided by the same policy, and applied.
+			return t.Decision != nil && !t.Decision.Denied()
 		}
 		if scenario.Denylist {
 			// The rules must have run, matched nothing, and been wrong about

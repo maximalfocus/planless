@@ -1,0 +1,9 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fare-engine-admin
+spec:
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.20.7.0/24

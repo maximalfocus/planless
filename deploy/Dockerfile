@@ -15,10 +15,13 @@ ARG TOFU_SHA256_ARM64=528f4eea63452bbddb30fa4f1780b57fac8d7676f9dda0f772e847bb62
 ARG OPA_VERSION=v1.19.1
 ARG OPA_SHA256_AMD64=c9f985ce0d345f5484006ade2c695ed9e3f308e4441139e46695c5c182ac0839
 ARG OPA_SHA256_ARM64=19dcb5186fd394c32023918c53eaacda55f835abb05e13e0f9a766dd1429494f
+ARG KUSTOMIZE_VERSION=v5.8.1
+ARG KUSTOMIZE_SHA256_AMD64=029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
+ARG KUSTOMIZE_SHA256_ARM64=0953ea3e476f66d6ddfcd911d750f5167b9365aa9491b2326398e289fef2c142
 RUN set -eu; \
     case "${TARGETARCH}" in \
-      amd64) tofu_sum="${TOFU_SHA256_AMD64}"; opa_sum="${OPA_SHA256_AMD64}" ;; \
-      arm64) tofu_sum="${TOFU_SHA256_ARM64}"; opa_sum="${OPA_SHA256_ARM64}" ;; \
+      amd64) tofu_sum="${TOFU_SHA256_AMD64}"; opa_sum="${OPA_SHA256_AMD64}"; kustomize_sum="${KUSTOMIZE_SHA256_AMD64}" ;; \
+      arm64) tofu_sum="${TOFU_SHA256_ARM64}"; opa_sum="${OPA_SHA256_ARM64}"; kustomize_sum="${KUSTOMIZE_SHA256_ARM64}" ;; \
       *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     wget -q -O /tmp/tofu.zip \
@@ -29,8 +32,13 @@ RUN set -eu; \
       "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_${TARGETARCH}_static"; \
     echo "${opa_sum}  /out/opa" | sha256sum -c -; \
     chmod +x /out/opa; \
+    wget -q -O /tmp/kustomize.tar.gz \
+      "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_${TARGETARCH}.tar.gz"; \
+    echo "${kustomize_sum}  /tmp/kustomize.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/kustomize.tar.gz -C /out kustomize; \
     /out/tofu version; \
-    /out/opa version
+    /out/opa version; \
+    /out/kustomize version
 
 # The builder compiles every binary and runs the whole Go and policy gate. It
 # carries the toolchain binaries so the tests can exercise the real policy
@@ -38,6 +46,7 @@ RUN set -eu; \
 FROM base AS builder
 COPY --from=toolchain /out/tofu /usr/local/bin/tofu
 COPY --from=toolchain /out/opa /usr/local/bin/opa
+COPY --from=toolchain /out/kustomize /usr/local/bin/kustomize
 WORKDIR /src
 COPY . .
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-trimpath
@@ -77,10 +86,12 @@ COPY --from=builder /out/gate /usr/local/bin/gate
 COPY --from=builder /out/client /usr/local/bin/client
 COPY --from=toolchain /out/tofu /usr/local/bin/tofu
 COPY --from=toolchain /out/opa /usr/local/bin/opa
+COPY --from=toolchain /out/kustomize /usr/local/bin/kustomize
 COPY --from=provider-builder "/out/terraform-provider-democloud_v${PROVIDER_VERSION}" \
      "/opt/tofu-mirror/democloud.example/planless/democloud/${PROVIDER_VERSION}/linux_${TARGETARCH}/terraform-provider-democloud_v${PROVIDER_VERSION}"
 COPY deploy/tofurc /etc/tofurc
 COPY infra /infra
+COPY manifests /manifests
 COPY policy /policy
 # The checked-in plan artifacts the refusal scenarios are proved against. No
 # vulnerable configuration exists in this repository, so refusal is proved

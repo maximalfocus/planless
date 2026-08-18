@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fare-exports
+  annotations:
+    democloud.example/readers: finance-reporting
+    democloud.example/reader-sources: 10.20.0.0/16

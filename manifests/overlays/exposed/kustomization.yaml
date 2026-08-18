@@ -1,0 +1,15 @@
+# INTENTIONALLY VULNERABLE — local educational material.
+#
+# The same base, resolved the other way. The refund export's readers become
+# everyone from everywhere, the fare engine moves onto a shared host network
+# with its admin listener on the unrestricted address, and the network policy
+# that guarded the admin port stops restricting anything.
+#
+# None of these values is in the base. A scan of the base finds nothing.
+resources:
+  - ../../base
+patches:
+  - path: fare-exports.yaml
+  - path: status-page.yaml
+  - path: fare-engine.yaml
+  - path: fare-engine-admin.yaml

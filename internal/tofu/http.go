@@ -1,11 +1,13 @@
 package tofu
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -64,4 +66,30 @@ func applicationBuild(base string) (string, error) {
 		return "", errors.New("the fare engine reported no build digest")
 	}
 	return payload.BuildDigest, nil
+}
+
+type httpDoer struct{ timeout time.Duration }
+
+func newJSONRequest(url string, body []byte) (*http.Request, error) {
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Democloud-Principal", "platform-deployer")
+	return req, nil
+}
+
+func (d *httpDoer) do(req *http.Request) error {
+	client := &http.Client{Timeout: d.timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("the control plane returned %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	return nil
 }
